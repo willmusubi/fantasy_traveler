@@ -87,18 +87,27 @@ export async function dispatchEvent(
   )
 
   // Append a combat-log round (resolved names/numbers) for the UI's expandable history.
-  const entry = buildLogEntry(result.effects, {
-    characters,
-    enemy: gameState.monster, // the enemy fought this round (before any victory respawn)
-    source: event.type,
-    goldDelta: result.gameState.gold - gameState.gold,
-    at: new Date().toISOString(),
-    id: newId(),
-  })
-  if (entry) {
-    result.gameState = {
-      ...result.gameState,
-      combatLog: [...result.gameState.combatLog, entry].slice(-COMBAT_LOG_CAP),
+  // An interactive round spans MULTIPLE dispatches (RoundBegan + N×RoundAdvanced); only the
+  // FINALIZING dispatch carries result.roundLog (the full round's effects + snapshots), so non-final
+  // round dispatches add no entry. Every other event logs from its own effects, per dispatch.
+  const isRoundEvent = event.type === 'RoundBegan' || event.type === 'RoundAdvanced'
+  const logEffects = isRoundEvent ? result.roundLog?.effects : result.effects
+  if (logEffects) {
+    const entry = buildLogEntry(logEffects, {
+      characters,
+      // The enemy fought this round (before any victory respawn). For an interactive round that's the
+      // snapshot taken at round start; otherwise the monster at the start of this dispatch.
+      enemy: result.roundLog?.enemy ?? gameState.monster,
+      source: event.type,
+      goldDelta: result.roundLog?.goldDelta ?? result.gameState.gold - gameState.gold,
+      at: new Date().toISOString(),
+      id: newId(),
+    })
+    if (entry) {
+      result.gameState = {
+        ...result.gameState,
+        combatLog: [...result.gameState.combatLog, entry].slice(-COMBAT_LOG_CAP),
+      }
     }
   }
 

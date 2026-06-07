@@ -33,7 +33,7 @@ import {
   WIPE_REVIVE_HP_PCT,
 } from '../domain/config'
 import { localDateKey } from '../domain/dates'
-import type { Affinity, CharResource, Character, GameState, ID, Mood, MoodFlag, OwnedEquipment, Priority, Quest, QuestReward, SkillId, Stats } from '../domain/types'
+import type { ActiveRound, Affinity, CharResource, Character, GameEffect, GameState, ID, Mood, MoodFlag, Monster, OwnedEquipment, PartyBuff, Priority, Quest, SkillId, Stats, TurnActor } from '../domain/types'
 import type { SynergyDef } from '../world/relationships'
 import { ctbRound, defeatRewards, monsterFromEncounter, spawnMonster, type CtbUnit } from './combat'
 import { effectiveStats, type CombatContext } from './effectiveStats'
@@ -63,24 +63,9 @@ function combatCtx(input: ReducerInput): CombatContext {
   }
 }
 
-export type GameEffect =
-  | { type: 'damage'; amount: number; monsterHpAfter: number; actorId: ID; fromSkill?: boolean }
-  | { type: 'monsterGrew'; hpDelta: number; atkDelta: number }
-  | { type: 'affinity'; characterId: ID; amount: number; rankedUpTo: string | null }
-  | { type: 'charXp'; characterId: ID; amount: number; levelsGained: number }
-  | { type: 'victory'; defeatedMonsterId: ID; storyStage: number }
-  | { type: 'mood'; characterId: ID; flag: GameState['moodFlags'][string] }
-  // Active combat (skills / enemy turn-attacks / resources)
-  | { type: 'skillCast'; skillId: SkillId; casterId: ID; skillKind: 'attack' | 'heal' | 'buff' | 'debuff'; amount: number }
-  | { type: 'heal'; targetId: ID; amount: number }
-  | { type: 'enemyAttack'; targetId: ID; amount: number }
-  | { type: 'downed'; characterId: ID }
-  | { type: 'partyWiped' }
-  // Worldview / storyline (§22)
-  | { type: 'encounterCleared'; questId: ID; encounterIndex: number; victoryText?: string; nextEnemy?: string }
-  | { type: 'questCompleted'; questId: ID; reward: QuestReward }
-  | { type: 'recruited'; companionId: ID }
-  | { type: 'equipmentGranted'; defId: string; instanceId: ID }
+// GameEffect now lives in domain/types.ts (so GameState.activeRound can reference it without a
+// domain→game cycle); re-exported here for existing importers (combatLog, etc.).
+export type { GameEffect }
 
 export interface ReducerResult {
   gameState: GameState
@@ -88,6 +73,9 @@ export interface ReducerResult {
   /** Updated stats for any character whose stats changed (e.g. XP/level). */
   characterStats: Record<ID, Stats>
   effects: GameEffect[]
+  /** Present only on the dispatch that FINALIZES an interactive round: the full round's effects +
+   *  log context, so the pipeline builds ONE combat-log entry (per-step dispatches skip logging). */
+  roundLog?: { effects: GameEffect[]; enemy: Monster; goldDelta: number }
 }
 
 // ---------- Shared mutable "turn" context ----------
@@ -186,12 +174,14 @@ function decayBuffs(t: Turn): void {
     .filter((b) => b.untilVictory || (b.turnsLeft ?? 0) > 0)
 }
 
-/** Apply HP damage to the on-field character best able to soak it (highest current HP). */
-function dealToParty(t: Turn, rawAmount: number): void {
+/** Apply HP damage to the on-field character best able to soak it (highest current HP). The
+ *  combat `ctx` is passed in (not recomputed) so a round's enemy turns use the round-start buffs —
+ *  keeping the interactive step-through byte-identical to the synchronous path. */
+function dealToParty(t: Turn, rawAmount: number, ctx: CombatContext): void {
   const alive = t.combatants.filter((c) => rOf(t, c).hp > 0)
   if (alive.length === 0) return
   const target = alive.reduce((a, b) => (rOf(t, a).hp >= rOf(t, b).hp ? a : b))
-  const def = effectiveStats(target, combatCtx(t.input)).def
+  const def = effectiveStats(target, ctx).def
   const dmg = Math.max(1, Math.round(rawAmount - def * ENEMY_DEF_SOAK))
   const r = rOf(t, target)
   const hpAfter = Math.max(0, r.hp - dmg)
@@ -308,6 +298,10 @@ export function gameReducer(input: ReducerInput, event: DomainEvent): ReducerRes
   switch (event.type) {
     case 'TodoCompleted':
       return reduceTodoCompleted(input, event.todo.priority)
+    case 'RoundBegan':
+      return reduceRoundBegan(input, event.todo.priority, event.todo.id)
+    case 'RoundAdvanced':
+      return reduceRoundAdvanced(input, event.choice, event.auto)
     case 'TodoOverdue':
       return reduceTodoOverdue(input)
     case 'JournalWritten':
@@ -362,52 +356,97 @@ function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: Comb
   return false
 }
 
-function reduceTodoCompleted(input: ReducerInput, priority: Priority): ReducerResult {
+// ---------- Round resolution (shared by the synchronous path AND the interactive step-through) ----------
+//
+// One completed task = ONE round (ctbRound): the PERSISTENT charge-time timeline advances by a
+// window wide enough that every living member takes its turn in speed order; a fast member that
+// crosses twice laps (套圈) for a bonus hit; the enemy attacks when its gauge crosses. The
+// synchronous path resolves the whole round at once (tests + non-stepping completion); the
+// interactive path resolves turn-by-turn, pausing at each ally's first turn. Both feed the SAME
+// frozen RoundCtx to the SAME per-turn primitive, so they cannot diverge.
+
+/** A round's frozen snapshot. Computed once at round start and reused for every turn, so a
+ *  buff/debuff cast mid-round never shifts another turn's math this round. */
+interface RoundCtx {
+  priority: Priority
+  mult: number
+  order: TurnActor[]
+  charges: Record<ID, number>
+  buffsAtStart: PartyBuff[]
+}
+
+/** Build a round's frozen snapshot (ctx/mult/order/charges) WITHOUT resolving any turn. */
+function buildRoundCtx(input: ReducerInput, priority: Priority): RoundCtx {
   const t = newTurn(input)
   const ctx = combatCtx(input)
-  // Each member's hit scales by the todo's priority (the round's "push") and active buffs.
+  // Each member's basic hit scales by the todo's priority (the round's "push") and active buffs.
   const mult = PRIORITY_MULT[priority] * (1 + activeAtkBuff(t.gs))
+  const { order, charges } = ctbRound(ctbUnitsOf(t, ctx))
+  return { priority, mult, order, charges, buffsAtStart: [...input.gameState.partyBuffs] }
+}
 
-  // 1. One completed task = ONE round (ctbRound): advance the PERSISTENT charge-time timeline by a
-  // window wide enough that every living member takes its turn in speed order; a fast member that
-  // crosses twice laps (套圈) for a bonus hit, and the enemy attacks when its gauge crosses (its turn).
-  // Gauges carry across completions, so lapping accrues over the fight.
-  const units = ctbUnitsOf(t, ctx)
-  const { order, charges } = ctbRound(units)
-
-  // Each party turn performs that member's PLANNED action (gs.roundPlan): a skill on its FIRST turn
-  // this round (if owned, unlocked, alive, affordable), else a basic attack. Laps always basic-attack
-  // (one planned skill per member per round). The enemy attacks on its own turns.
-  const actedThisRound = new Set<ID>()
-  let victory = false
-  for (const act of order) {
-    if (victory) break // the enemy is down — stop resolving turns
-    if (act.side === 'party') {
-      const member = t.combatants.find((c) => c.id === act.id)
-      if (!member || rOf(t, member).hp <= 0) continue // downed mid-timeline → can't act
-      const firstTurn = !actedThisRound.has(member.id)
-      actedThisRound.add(member.id)
-      const plannedId = firstTurn ? t.gs.roundPlan[member.id] : undefined
-      const skill = plannedId ? unlockedSkills(member).find((s) => s.id === plannedId) : undefined
-      const r = rOf(t, member)
-      if (skill && r.mp >= skill.mpCost && r.hp > (skill.hpCost ?? 0)) {
-        victory = applySkillEffect(t, member, skill, ctx) // planned skill fires (spends MP/HP)
-      } else {
-        const dmg = Math.max(1, Math.round(effectiveStats(member, ctx).atk * mult - t.gs.monster.def))
-        victory = resolveMonsterDamage(t, dmg, member.id) // basic attack (priority-scaled)
-      }
-    } else {
-      dealToParty(t, t.gs.monster.atk * ENEMY_ATK_MULT) // the enemy's turn — strike the sturdiest
-    }
+/** The combat context for a round's turns: equipment/synergies from input, partyBuffs FROZEN to the
+ *  round-start snapshot (so the interactive path, which re-reads live state each step, matches the
+ *  synchronous path exactly). */
+function roundCombatCtx(input: ReducerInput, rctx: RoundCtx): CombatContext {
+  return {
+    ownedEquipment: input.ownedEquipment ?? [],
+    activeSynergies: input.activeSynergies ?? [],
+    partyBuffs: rctx.buffsAtStart,
   }
+}
 
-  // Persist the gauges (current combatants + the current monster; a respawned enemy starts at 0).
+/** Resolve order[index] against the live Turn `t`, using the frozen round ctx + mult. A party
+ *  member casts its action (explicit `choice`, else gs.roundPlan) on its FIRST turn if
+ *  owned/unlocked/alive/affordable, else a basic attack; laps always basic-attack. The enemy
+ *  strikes the sturdiest. Mutates `t` and `acted`. Returns true on a killing blow. */
+function resolveTurnInto(
+  t: Turn,
+  rctx: RoundCtx,
+  ctx: CombatContext,
+  index: number,
+  acted: Set<ID>,
+  choice?: SkillId | 'basic',
+): boolean {
+  const act = rctx.order[index]
+  if (act.side !== 'party') {
+    dealToParty(t, t.gs.monster.atk * ENEMY_ATK_MULT, ctx) // the enemy's turn — strike the sturdiest
+    return false
+  }
+  const member = t.combatants.find((c) => c.id === act.id)
+  if (!member || rOf(t, member).hp <= 0) return false // downed mid-timeline → can't act
+  const firstTurn = !acted.has(member.id)
+  acted.add(member.id)
+  const plannedId = firstTurn ? (choice !== undefined ? choice : t.gs.roundPlan[member.id]) : undefined
+  const skill = plannedId && plannedId !== 'basic' ? unlockedSkills(member).find((s) => s.id === plannedId) : undefined
+  const r = rOf(t, member)
+  if (skill && r.mp >= skill.mpCost && r.hp > (skill.hpCost ?? 0)) {
+    return applySkillEffect(t, member, skill, ctx) // planned skill fires (spends MP/HP)
+  }
+  const dmg = Math.max(1, Math.round(effectiveStats(member, ctx).atk * rctx.mult - t.gs.monster.def))
+  return resolveMonsterDamage(t, dmg, member.id) // basic attack (priority-scaled)
+}
+
+/** True if order[index] is a LIVE party member taking its FIRST turn — the point the interactive
+ *  resolver pauses at for the player's choice (enemy turns, laps and downed slots are auto-run). */
+function isLiveDecision(t: Turn, order: TurnActor[], index: number, acted: Set<ID>): boolean {
+  const a = order[index]
+  if (!a || a.side !== 'party' || acted.has(a.id)) return false
+  const member = t.combatants.find((c) => c.id === a.id)
+  return !!member && rOf(t, member).hp > 0
+}
+
+/** Persist the round's CTB gauges (combatants + current monster; a respawned enemy starts at 0). */
+function commitCharges(t: Turn, charges: Record<ID, number>): void {
   const nextCharge: Record<ID, number> = {}
   for (const c of t.combatants) nextCharge[c.id] = charges[c.id] ?? t.gs.charge[c.id] ?? 0
   nextCharge[t.gs.monster.id] = charges[t.gs.monster.id] ?? 0
   t.gs.charge = nextCharge
+}
 
-  // 2. Rewards are PER TASK, not per turn — extra turns add damage, never extra loot (anti-farm).
+/** Per-TASK rewards (not per turn — extra turns add damage, never extra loot). Runs once at the
+ *  end of a round, after all turns resolve. */
+function applyTaskRewards(t: Turn, priority: Priority, victory: boolean): void {
   grantXp(t, TODO_XP[priority])
   gainAffinity(t, AFFINITY_TODO_COMPLETE)
   for (const c of t.combatants) {
@@ -417,7 +456,95 @@ function reduceTodoCompleted(input: ReducerInput, priority: Priority): ReducerRe
   t.gs.gold += GOLD_TODO[priority]
   decayBuffs(t)
   if (!victory) wipeCheck(t) // all on-field members downed across the round = a setback
+}
 
+/** Close out a round: commit gauges, grant per-task rewards, clear activeRound, and attach the full
+ *  round's effects (`priorEffects` from earlier interactive dispatches + this dispatch's) as
+ *  `roundLog` so the pipeline writes ONE combat-log entry. */
+function finalizeRoundInto(t: Turn, ar: ActiveRound, victory: boolean, priorEffects: GameEffect[]): ReducerResult {
+  commitCharges(t, ar.charges)
+  applyTaskRewards(t, ar.priority, victory)
+  t.gs.activeRound = undefined
+  const result = finishTurn(t)
+  result.roundLog = { effects: [...priorEffects, ...t.effects], enemy: ar.enemyAtStart, goldDelta: t.gs.gold - ar.goldAtStart }
+  return result
+}
+
+/** Synchronous path (tests + non-stepping completion): resolve the WHOLE round at once using each
+ *  member's gs.roundPlan. Behaviour-identical to the original inline loop. */
+function reduceTodoCompleted(input: ReducerInput, priority: Priority): ReducerResult {
+  const rctx = buildRoundCtx(input, priority)
+  const ctx = roundCombatCtx(input, rctx)
+  const t = newTurn(input)
+  const acted = new Set<ID>()
+  let victory = false
+  for (let i = 0; i < rctx.order.length && !victory; i++) {
+    victory = resolveTurnInto(t, rctx, ctx, i, acted)
+  }
+  commitCharges(t, rctx.charges)
+  applyTaskRewards(t, priority, victory)
+  return finishTurn(t)
+}
+
+/** Interactive path — BEGIN: set up activeRound, auto-run any leading enemy turns, and pause at the
+ *  first live ally decision (or finalize immediately if there is none — e.g. no living allies). */
+function reduceRoundBegan(input: ReducerInput, priority: Priority, todoId: ID): ReducerResult {
+  const rctx = buildRoundCtx(input, priority)
+  const ctx = roundCombatCtx(input, rctx)
+  const t = newTurn(input)
+  const acted = new Set<ID>()
+  let index = 0
+  let victory = false
+  while (index < rctx.order.length && !victory && !isLiveDecision(t, rctx.order, index, acted)) {
+    victory = resolveTurnInto(t, rctx, ctx, index, acted)
+    index++
+  }
+  const ar: ActiveRound = {
+    priority,
+    mult: rctx.mult,
+    order: rctx.order,
+    charges: rctx.charges,
+    buffsAtStart: rctx.buffsAtStart,
+    index,
+    actedFirstTurn: [...acted],
+    effects: [...t.effects],
+    goldAtStart: input.gameState.gold,
+    enemyAtStart: input.gameState.monster,
+    todoId,
+  }
+  t.gs.activeRound = ar
+  if (index >= rctx.order.length || victory) return finalizeRoundInto(t, ar, victory, [])
+  return finishTurn(t)
+}
+
+/** Interactive path — ADVANCE: resolve the paused ally with `choice` (or, with `auto`, resolve all
+ *  remaining turns using gs.roundPlan), then auto-run to the next live decision or finalize. */
+function reduceRoundAdvanced(input: ReducerInput, choice?: SkillId | 'basic', auto?: boolean): ReducerResult {
+  const t = newTurn(input)
+  const ar = t.gs.activeRound
+  if (!ar) return noop(input)
+  const rctx: RoundCtx = { priority: ar.priority, mult: ar.mult, order: ar.order, charges: ar.charges, buffsAtStart: ar.buffsAtStart }
+  const ctx = roundCombatCtx(input, rctx)
+  const acted = new Set<ID>(ar.actedFirstTurn)
+  let index = ar.index
+  let victory = false
+  if (auto) {
+    while (index < rctx.order.length && !victory) {
+      victory = resolveTurnInto(t, rctx, ctx, index, acted)
+      index++
+    }
+  } else {
+    if (index < rctx.order.length) {
+      victory = resolveTurnInto(t, rctx, ctx, index, acted, choice)
+      index++
+    }
+    while (index < rctx.order.length && !victory && !isLiveDecision(t, rctx.order, index, acted)) {
+      victory = resolveTurnInto(t, rctx, ctx, index, acted)
+      index++
+    }
+  }
+  if (index >= rctx.order.length || victory) return finalizeRoundInto(t, ar, victory, ar.effects)
+  t.gs.activeRound = { ...ar, index, actedFirstTurn: [...acted], effects: [...ar.effects, ...t.effects] }
   return finishTurn(t)
 }
 
@@ -433,7 +560,7 @@ function reduceTodoOverdue(input: ReducerInput): ReducerResult {
     atk: m.atk + OVERDUE_ATK_GROW,
   }
   t.effects.push({ type: 'monsterGrew', hpDelta: OVERDUE_HP_GROW, atkDelta: OVERDUE_ATK_GROW })
-  dealToParty(t, OVERDUE_PARTY_DMG)
+  dealToParty(t, OVERDUE_PARTY_DMG, combatCtx(input))
   wipeCheck(t)
 
   // The active companion becomes worried (biases next greeting/canned line).

@@ -68,7 +68,8 @@ describe('battle-stage action plan', () => {
     await useGame.getState().seedNewGame('阿旅', 'vanguard')
     render(<MonsterHUD />)
 
-    // Clicking 疾影 in the plan panel ASSIGNS it (no instant cast).
+    // Defaults now live in a popup; open it, then click 疾影 to ASSIGN it (no instant cast).
+    await user.click(screen.getByRole('button', { name: /默认行动/ }))
     await user.click(screen.getByRole('button', { name: /疾影/ }))
     await waitFor(() => expect(useGame.getState().gameState!.roundPlan[companionId()]).toBe('jiying'))
 

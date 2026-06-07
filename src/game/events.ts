@@ -1,7 +1,7 @@
 // Domain events (§7). The full union is kept for extensibility; the reducer only
 // wires TodoCompleted + TodoOverdue in M0 (others are no-ops until their milestone).
 
-import type { CalendarEvent, ID, JournalEntry, Todo } from '../domain/types'
+import type { CalendarEvent, ID, JournalEntry, SkillId, Todo } from '../domain/types'
 
 export type DomainEvent =
   | { type: 'TodoCompleted'; todo: Todo }
@@ -10,6 +10,9 @@ export type DomainEvent =
   | { type: 'CalendarEventAttended'; event: CalendarEvent }
   | { type: 'FocusStreak'; days: number }
   | { type: 'DialogueInteraction'; characterId: ID }
+  // Interactive (FF-style) combat round, driven by the RoundResolver overlay.
+  | { type: 'RoundBegan'; todo: Todo }
+  | { type: 'RoundAdvanced'; choice?: SkillId | 'basic'; auto?: boolean }
 
 export type DomainEventType = DomainEvent['type']
 

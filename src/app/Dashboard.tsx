@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { selectPlayer, useGame } from '../state/gameStore'
 import { BuffChoiceModal } from '../ui/BuffChoiceModal'
 import { ChatPanel } from '../ui/ChatPanel'
@@ -30,6 +30,15 @@ export function Dashboard() {
   const [view, setView] = useState<RightView>('home')
   // Top-level separation: the game/combat zone vs. the personal-productivity zone (§21).
   const [zone, setZone] = useState<Zone>('adventure')
+
+  // Interactive (FF-style) step-through is the adventure zone's default — the TurnPicker lives in the
+  // battle HUD. Outside it (calendar) or in tests/headless, completion falls back to synchronous
+  // whole-round resolution. Switching away from a round mid-step auto-resolves it with defaults.
+  useEffect(() => {
+    const g = useGame.getState()
+    g.setSteppingEnabled(zone === 'adventure')
+    if (zone !== 'adventure' && g.gameState?.activeRound) void g.autoResolveRound()
+  }, [zone])
 
   return (
     <div className="app">

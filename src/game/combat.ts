@@ -16,8 +16,10 @@ import {
   MONSTER_SPD_PER_STAGE,
   PRIORITY_MULT,
 } from '../domain/config'
-import type { Character, EncounterSpec, Monster, Priority } from '../domain/types'
+import type { Character, EncounterSpec, Monster, Priority, TurnActor } from '../domain/types'
 import { EMPTY_COMBAT_CONTEXT, effectiveStats, type CombatContext } from './effectiveStats'
+
+export type { TurnActor }
 
 /** Sum of EFFECTIVE atk across the party (equipment + synergies). */
 export function partyAtk(party: Character[], ctx: CombatContext = EMPTY_COMBAT_CONTEXT): number {
@@ -35,10 +37,6 @@ export function computeDamage(
   return Math.max(1, Math.round(raw))
 }
 
-export interface TurnActor {
-  side: 'party' | 'enemy'
-  id: string
-}
 export interface CtbUnit extends TurnActor {
   spd: number
   charge: number

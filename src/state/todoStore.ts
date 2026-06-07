@@ -4,6 +4,7 @@ import { todosRepo } from '../data/repositories'
 import { dueDateKey, dueDeadline, isOverdue, localDateKey } from '../domain/dates'
 import type { Priority, Todo } from '../domain/types'
 import { dispatchEvent } from '../game/pipeline'
+import type { ReducerResult } from '../game/reducer'
 import { selectPartyCompanions, useGame } from './gameStore'
 
 interface AddInput {
@@ -123,6 +124,9 @@ export const useTodos = create<TodoStore>((set, get) => ({
       return
     }
 
+    // Don't start a new round while one is still mid-resolution (the step-through overlay is open).
+    if (useGame.getState().gameState?.activeRound) return
+
     const stamp = new Date().toISOString()
     const updated: Todo = {
       ...todo,
@@ -132,32 +136,22 @@ export const useTodos = create<TodoStore>((set, get) => ({
       lastOverdueOn: undefined,
     }
 
+    // Interactive (FF-style) step-through: mark done + open the RoundResolver overlay. The felt-reward
+    // reaction + recruit hydrate fire when the round finalizes (gameStore.onRoundResolved).
+    if (useGame.getState().steppingEnabled) {
+      set({ todos: get().todos.map((t) => (t.id === id ? updated : t)) })
+      await useGame.getState().beginInteractiveRound(updated)
+      return
+    }
+
+    // Synchronous path (tests / non-stepping): resolve the whole round at once, then react.
     const result = await dispatchEvent(
       { type: 'TodoCompleted', todo: updated },
       { prewrite: async ({ todos }) => void (await todos.put(updated)) },
     )
-
     set({ todos: get().todos.map((t) => (t.id === id ? updated : t)) })
-
     useGame.getState().ingestResult(result)
-
-    // The felt reward: a RANDOM on-field companion pipes up (canned, no LLM), shown with her
-    // portrait in the global ReactionPopup. Affinity now goes to the whole party, so the
-    // float shows that reactor's own gain.
-    const companions = selectPartyCompanions(useGame.getState())
-    const reactor = companions[Math.floor(Math.random() * companions.length)]
-    if (reactor) {
-      const n = get().completionCount
-      const line = pickCompletionLine(reactor.id, todo.priority, n)
-      const aff = result.effects.find((e) => e.type === 'affinity' && e.characterId === reactor.id)
-      useGame.getState().showReaction({
-        companionId: reactor.id,
-        text: line.text,
-        expression: line.expression,
-        affinityDelta: aff && aff.type === 'affinity' ? aff.amount : 0,
-      })
-      set({ completionCount: n + 1 })
-    }
+    fireCompletionReaction(result, updated.priority)
 
     // Recruits / quest completion add new Character + Affinity rows → refresh from IDB.
     if (result.effects.some((e) => e.type === 'recruited' || e.type === 'questCompleted')) {
@@ -245,3 +239,23 @@ export const useTodos = create<TodoStore>((set, get) => ({
     }
   },
 }))
+
+/** The felt reward for completing a task: a RANDOM on-field companion pipes up (canned, no LLM) in
+ *  the global ReactionPopup, showing that reactor's own affinity gain. Shared by the synchronous
+ *  completion path (above) and the interactive round's finalize (gameStore.onRoundResolved), so the
+ *  reaction fires exactly once per task either way. */
+export function fireCompletionReaction(result: ReducerResult, priority: Priority): void {
+  const companions = selectPartyCompanions(useGame.getState())
+  const reactor = companions[Math.floor(Math.random() * companions.length)]
+  if (!reactor) return
+  const n = useTodos.getState().completionCount
+  const line = pickCompletionLine(reactor.id, priority, n)
+  const aff = result.effects.find((e) => e.type === 'affinity' && e.characterId === reactor.id)
+  useGame.getState().showReaction({
+    companionId: reactor.id,
+    text: line.text,
+    expression: line.expression,
+    affinityDelta: aff && aff.type === 'affinity' ? aff.amount : 0,
+  })
+  useTodos.setState({ completionCount: n + 1 })
+}

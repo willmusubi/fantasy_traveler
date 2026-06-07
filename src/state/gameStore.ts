@@ -5,12 +5,14 @@ import { SKILL_DEFS } from '../companion/skills'
 import { affinityRepo, charactersRepo, gameStateRepo, questsRepo } from '../data/repositories'
 import { HABIT_BUFF_ACTIVE_CAP, HABIT_BUFF_CHOICES, HABIT_BUFF_POOL, HABIT_DEBUFF_POOL, type HabitBuffDef } from '../domain/config'
 import { localDateKey } from '../domain/dates'
-import type { Affinity, Character, ClassId, ExpressionKey, GameState, ID, PartyBuff, Quest, SkillId, WorldId } from '../domain/types'
+import type { Affinity, Character, ClassId, ExpressionKey, GameState, ID, PartyBuff, Priority, Quest, SkillId, Todo, WorldId } from '../domain/types'
 import { spawnMonster } from '../game/combat'
+import { dispatchEvent } from '../game/pipeline'
 import type { ReducerResult } from '../game/reducer'
 import { t } from '../i18n'
 import { EQUIPMENT_DEFS } from '../world/equipment'
 import { SHOP_POTIONS } from '../world/shop'
+import { fireCompletionReaction } from './todoStore'
 
 export interface Toast {
   id: string
@@ -79,8 +81,19 @@ interface GameStore {
   /** Apply one random debuff (untilVictory) — fired when a habit's streak breaks. */
   applyRandomDebuff: () => Promise<void>
   /** Plan a party member's action for the next task-executed round: a SkillId, or null = basic
-   *  attack. Persists; fires when the next todo completes (no instant cast). */
+   *  attack. Persists; used as the default in the step-through picker and by auto-resolve. */
   setRoundAction: (memberId: ID, skillId: SkillId | null) => Promise<void>
+  /** Whether combat resolves as an interactive step-through (FF-style). Enabled by the running app;
+   *  left false in tests/headless so completion uses the synchronous whole-round path. */
+  steppingEnabled: boolean
+  setSteppingEnabled: (on: boolean) => void
+  /** Begin an interactive round for a just-completed (already marked done) todo. */
+  beginInteractiveRound: (todo: Todo) => Promise<void>
+  /** Resolve the paused ally's turn with `choice` (a SkillId or 'basic'), then auto-run enemy/lap
+   *  turns to the next decision or finalize. */
+  advanceRound: (choice?: SkillId | 'basic') => Promise<void>
+  /** Resolve all remaining turns of the active round using each member's roundPlan default. */
+  autoResolveRound: () => Promise<void>
   // Worldview management (§22)
   setParty: (companionIds: ID[]) => Promise<void>
   /** Switch the active world (the story IP). Disallowed mid-quest. */
@@ -157,6 +170,7 @@ export const useGame = create<GameStore>((set, get) => ({
   recruitedId: null,
   victorySummary: null,
   pendingBuffChoices: [],
+  steppingEnabled: false,
 
   async hydrate() {
     const [characters, gameState, affList, activeQuest] = await Promise.all([
@@ -404,6 +418,37 @@ export const useGame = create<GameStore>((set, get) => ({
     set({ gameState: next })
   },
 
+  setSteppingEnabled(on) {
+    set({ steppingEnabled: on })
+  },
+
+  async beginInteractiveRound(todo) {
+    // Marks the todo done in the SAME tx (like TodoCompleted) and sets up gs.activeRound, auto-running
+    // any leading enemy turns and pausing at the first ally decision (the RoundResolver overlay takes over).
+    const result = await dispatchEvent(
+      { type: 'RoundBegan', todo },
+      { prewrite: async ({ todos }) => void (await todos.put(todo)) },
+    )
+    get().ingestResult(result)
+    await onRoundResolved(result, todo.priority) // no living ally to decide → finalized at begin
+  },
+
+  async advanceRound(choice) {
+    const before = get().gameState?.activeRound
+    if (!before) return
+    const result = await dispatchEvent({ type: 'RoundAdvanced', choice })
+    get().ingestResult(result)
+    await onRoundResolved(result, before.priority)
+  },
+
+  async autoResolveRound() {
+    const before = get().gameState?.activeRound
+    if (!before) return
+    const result = await dispatchEvent({ type: 'RoundAdvanced', auto: true })
+    get().ingestResult(result)
+    await onRoundResolved(result, before.priority)
+  },
+
   async setParty(companionIds) {
     const gs = get().gameState
     if (!gs) return
@@ -489,3 +534,14 @@ export const useGame = create<GameStore>((set, get) => ({
     set({ gameState: next, toasts: [...get().toasts, { id: tid(), kind: 'loot', text: `◆ 购买了 ${t(def.nameKey)}` }] })
   },
 }))
+
+/** Side-effects when an interactive round closes (activeRound cleared): the felt-reward companion
+ *  reaction (once per task, with the finalize result's affinity delta) + a hydrate to load any
+ *  recruited companion / completed quest. No-op while the round is still mid-resolution. */
+async function onRoundResolved(result: ReducerResult, priority: Priority): Promise<void> {
+  if (result.gameState.activeRound) return
+  fireCompletionReaction(result, priority)
+  if (result.effects.some((e) => e.type === 'recruited' || e.type === 'questCompleted')) {
+    await useGame.getState().hydrate()
+  }
+}

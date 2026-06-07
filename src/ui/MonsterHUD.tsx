@@ -1,6 +1,6 @@
-import { Fragment } from 'react'
-import { SKILL_DEFS, unlockedSkills } from '../companion/skills'
-import type { CharResource, Character, ClassId, PartyBuff } from '../domain/types'
+import { Fragment, useState } from 'react'
+import { SKILL_DEFS } from '../companion/skills'
+import type { Character, PartyBuff } from '../domain/types'
 import { ctbRound, type CtbUnit } from '../game/combat'
 import { effectiveStats } from '../game/effectiveStats'
 import { resourceOf } from '../game/resources'
@@ -9,56 +9,13 @@ import { selectPlayer, useGame } from '../state/gameStore'
 import { useQuest } from '../state/questStore'
 import { activeSynergiesFor } from '../world/relationships'
 import { FIRST_WORLD_ID, WORLD_DEFS } from '../world/worlds'
-
-// Placeholder battle sprites (emoji) until real pixel art lands. Player sprite is
-// class-flavored; companions use a friendly face.
-const CLASS_EMOJI: Record<ClassId, string> = {
-  vanguard: '⚔️', guardian: '🛡️', striker: '🗡️', arcanist: '🔮', tactician: '📜', medic: '✨',
-}
+import { BattleSprite, CLASS_EMOJI, enemyEmoji } from './battleSprites'
+import { DefaultActionsModal } from './DefaultActionsModal'
+import { TurnPicker } from './TurnPicker'
 
 // Fallback names for buffs without a label (e.g. skill atk buffs).
 const BUFF_KIND_LABEL: Record<PartyBuff['kind'], string> = {
   atkPct: '攻击', defPct: '防御', spdPct: '速度', magPct: '法术',
-}
-
-// Placeholder enemy sprite by a light keyword heuristic (until real art lands). For a
-// canon antagonist we avoid the generic 👹 demon; only the no-quest "training" monster is 👹.
-function enemyEmoji(name: string, inQuest: boolean): string {
-  if (/保安|安保|守卫|警卫|护卫/.test(name)) return '👮'
-  if (/收藏|大亨|富豪|老板|绅士/.test(name)) return '🎩'
-  if (/掮客|黑帮|打手|拍卖|匪/.test(name)) return '🕴️'
-  if (/雇佣兵|武装|士兵|兵/.test(name)) return '🥷'
-  if (/假面|面具|神秘|幕后|影/.test(name)) return '🎭'
-  return inQuest ? '🎭' : '👹'
-}
-
-function MiniBar({ value, max, cls }: { value: number; max: number; cls: string }) {
-  const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0
-  return (
-    <div className={`mini-bar ${cls}`}>
-      <div className="mini-fill" style={{ width: `${pct}%` }} />
-    </div>
-  )
-}
-
-function BattleSprite({ char, isPlayer, res, charge, plan }: { char: Character; isPlayer: boolean; res: CharResource; charge: number; plan?: string }) {
-  const downed = res.hp <= 0
-  const emoji = downed ? '💫' : isPlayer ? CLASS_EMOJI[char.classId] ?? '⚔️' : '🙂'
-  return (
-    <div className={`bsprite ${downed ? 'downed' : ''}`}>
-      {!downed && plan && <div className="bsprite-action" title="这一回合的行动">{plan}</div>}
-      <div className="bsprite-body" aria-hidden>{emoji}</div>
-      <div className="bsprite-shadow" aria-hidden />
-      <div className="bsprite-name">
-        {char.name} <span className="bsprite-lv">Lv.{char.stats.level}</span>
-      </div>
-      <div className="bsprite-bars">
-        <MiniBar value={res.hp} max={char.stats.maxHp} cls="hp" />
-        <MiniBar value={res.mp} max={char.stats.maxMp} cls="mp" />
-        <MiniBar value={Math.min(charge, 100)} max={100} cls="ct" />
-      </div>
-    </div>
-  )
 }
 
 export function MonsterHUD() {
@@ -67,7 +24,7 @@ export function MonsterHUD() {
   const player = useGame(selectPlayer)
   const lastDamage = useGame((s) => s.lastDamage)
   const activeQuest = useGame((s) => s.activeQuest)
-  const setRoundAction = useGame((s) => s.setRoundAction)
+  const [defaultsOpen, setDefaultsOpen] = useState(false)
   const questStatus = useQuest((s) => s.status)
   const startQuest = useQuest((s) => s.startQuest)
   if (!gs) return null
@@ -79,6 +36,10 @@ export function MonsterHUD() {
   const partyCompanions = gs.partyIds
     .map((id) => characters.find((c) => c.id === id))
     .filter((c): c is Character => c != null && c.kind === 'companion')
+
+  // Whose first turn it is right now (drives the sprite highlight + the inline TurnPicker).
+  const arActor = gs.activeRound ? gs.activeRound.order[gs.activeRound.index] : undefined
+  const activeId = arActor?.side === 'party' ? arActor.id : undefined
 
   const pct = Math.max(0, Math.round((monster.hp / monster.maxHp) * 100))
   const low = pct <= 30
@@ -128,9 +89,9 @@ export function MonsterHUD() {
         <div className="stage-ground" aria-hidden />
 
         <div className="party-side">
-          {player && <BattleSprite char={player} isPlayer res={resourceOf(gs, player)} charge={gs.charge[player.id] ?? 0} plan={planLabel(player)} />}
+          {player && <BattleSprite char={player} isPlayer res={resourceOf(gs, player)} charge={gs.charge[player.id] ?? 0} plan={gs.activeRound ? undefined : planLabel(player)} active={activeId === player.id} />}
           {partyCompanions.map((c) => (
-            <BattleSprite key={c.id} char={c} isPlayer={false} res={resourceOf(gs, c)} charge={gs.charge[c.id] ?? 0} plan={planLabel(c)} />
+            <BattleSprite key={c.id} char={c} isPlayer={false} res={resourceOf(gs, c)} charge={gs.charge[c.id] ?? 0} plan={gs.activeRound ? undefined : planLabel(c)} active={activeId === c.id} />
           ))}
         </div>
 
@@ -196,7 +157,7 @@ export function MonsterHUD() {
           <div className="hpbar-label">{monster.hp} / {monster.maxHp}</div>
         </div>
         {activeQuest ? (
-          <div className="boss-hint">完成一个任务，按速度执行你为各角色排好的行动（技能消耗 MP）</div>
+          <div className="boss-hint">完成一个任务，按出手顺序逐个角色选择行动（技能消耗 MP）</div>
         ) : (
           <div className="stage-cta-wrap">
             <span className="stage-cta-hint">
@@ -213,46 +174,17 @@ export function MonsterHUD() {
         )}
       </div>
 
-      {planParty.length > 0 && (
-        <div className="plan-bar">
-          <div className="plan-bar-head">排好各角色的行动，完成一个任务执行这一回合（技能消耗 MP）</div>
-          {planParty.map((c) => {
-            const r = resourceOf(gs, c)
-            const planned = gs.roundPlan[c.id]
-            const skills = unlockedSkills(c)
-            return (
-              <div className="plan-row" key={c.id}>
-                <span className="plan-row-name">{c.name}</span>
-                <button
-                  className={`skill-btn ${!planned ? 'selected' : ''}`}
-                  title={`${c.name}：普通攻击（不耗 MP）`}
-                  onClick={() => void setRoundAction(c.id, null)}
-                >
-                  <span className="skill-btn-name">普攻</span>
-                  <span className="skill-btn-cost">MP0</span>
-                </button>
-                {skills.map((skill) => {
-                  const affordable = r.mp >= skill.mpCost && (!skill.hpCost || r.hp > skill.hpCost)
-                  return (
-                    <button
-                      key={skill.id}
-                      className={`skill-btn ${planned === skill.id ? 'selected' : ''}`}
-                      disabled={!affordable && planned !== skill.id}
-                      title={`${c.name}：${skill.desc}`}
-                      onClick={() => void setRoundAction(c.id, skill.id)}
-                    >
-                      <span className="skill-btn-name">{t(skill.nameKey)}</span>
-                      <span className="skill-btn-cost">
-                        MP{skill.mpCost}{skill.hpCost ? `·HP${skill.hpCost}` : ''}
-                      </span>
-                    </button>
-                  )
-                })}
-              </div>
-            )
-          })}
-        </div>
+      {gs.activeRound ? (
+        <TurnPicker />
+      ) : (
+        planParty.length > 0 && (
+          <div className="plan-defaults">
+            <button className="btn btn-ghost" onClick={() => setDefaultsOpen(true)}>⚙ 默认行动</button>
+            <span className="plan-defaults-hint">设置「⚡ 全部自动」与离开战斗界面时各角色的预设行动</span>
+          </div>
+        )
       )}
+      {defaultsOpen && <DefaultActionsModal onClose={() => setDefaultsOpen(false)} />}
     </div>
   )
 }

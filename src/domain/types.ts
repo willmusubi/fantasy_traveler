@@ -291,6 +291,59 @@ export interface CombatLogEntry {
   lines: CombatLogLine[]
 }
 
+/** One actor in the CTB turn order: a party member or the enemy. */
+export interface TurnActor {
+  side: 'party' | 'enemy'
+  id: ID
+}
+
+/** A combat/economy effect emitted by the reducer (consumed by the store for floats/toasts and
+ *  by the combat log). Lives here (rather than in the reducer) so GameState.activeRound can
+ *  reference it without a domain→game import. */
+export type GameEffect =
+  | { type: 'damage'; amount: number; monsterHpAfter: number; actorId: ID; fromSkill?: boolean }
+  | { type: 'monsterGrew'; hpDelta: number; atkDelta: number }
+  | { type: 'affinity'; characterId: ID; amount: number; rankedUpTo: string | null }
+  | { type: 'charXp'; characterId: ID; amount: number; levelsGained: number }
+  | { type: 'victory'; defeatedMonsterId: ID; storyStage: number }
+  | { type: 'mood'; characterId: ID; flag: MoodFlag }
+  // Active combat (skills / enemy turn-attacks / resources)
+  | { type: 'skillCast'; skillId: SkillId; casterId: ID; skillKind: 'attack' | 'heal' | 'buff' | 'debuff'; amount: number }
+  | { type: 'heal'; targetId: ID; amount: number }
+  | { type: 'enemyAttack'; targetId: ID; amount: number }
+  | { type: 'downed'; characterId: ID }
+  | { type: 'partyWiped' }
+  // Worldview / storyline (§22)
+  | { type: 'encounterCleared'; questId: ID; encounterIndex: number; victoryText?: string; nextEnemy?: string }
+  | { type: 'questCompleted'; questId: ID; reward: QuestReward }
+  | { type: 'recruited'; companionId: ID }
+  | { type: 'equipmentGranted'; defId: string; instanceId: ID }
+
+/** An in-progress interactive (FF-style step-through) round. Present only while the player is
+ *  resolving turns; cleared at finalize. Persisted in GameState so a refresh mid-round resumes. */
+export interface ActiveRound {
+  priority: Priority
+  /** Basic-attack damage multiplier, frozen at round start. */
+  mult: number
+  /** Full CTB order for the round (party + enemy + laps). */
+  order: TurnActor[]
+  /** Post-round persistent CTB gauges, committed at finalize. */
+  charges: Record<ID, number>
+  /** partyBuffs at round start — the frozen combat context for every turn this round. */
+  buffsAtStart: PartyBuff[]
+  /** Index of the next turn to resolve (0..order.length). */
+  index: number
+  /** Party ids that have taken their first turn this round (distinguishes skill from lap). */
+  actedFirstTurn: ID[]
+  /** Combat effects accumulated across steps → built into one combat-log entry at finalize. */
+  effects: GameEffect[]
+  /** gold + enemy snapshots at round start (for the finalize combat-log line). */
+  goldAtStart: number
+  enemyAtStart: Monster
+  /** The todo whose completion owns this round. */
+  todoId: ID
+}
+
 export interface GameState {
   partyIds: ID[] // player + companions; partyIds[0]=player, partyIds[1]=lead; ≤6
   monster: Monster
@@ -333,6 +386,8 @@ export interface GameState {
    *  a chosen SkillId, or a MISSING entry = basic attack. Persists across tasks (set-and-forget);
    *  a planned skill that can't be paid at execution falls back to a basic attack. */
   roundPlan: Record<ID, SkillId>
+  /** An interactive round mid-resolution (FF-style step-through). Absent when idle. */
+  activeRound?: ActiveRound
 }
 
 // ---------- Chat ----------
