@@ -29,33 +29,33 @@ export interface SynergyDef {
 }
 
 export const RELATIONSHIP_EDGES: RelationshipEdge[] = [
-  { members: ['raisei_hitomi', 'raisei_rui'], worldId: 'cats_eye', kind: 'sibling', labelKey: 'rel.sisters' },
-  { members: ['raisei_hitomi', 'raisei_ai'], worldId: 'cats_eye', kind: 'sibling', labelKey: 'rel.sisters' },
-  { members: ['raisei_rui', 'raisei_ai'], worldId: 'cats_eye', kind: 'sibling', labelKey: 'rel.sisters' },
+  { members: ['mira', 'vela'], worldId: 'stargazers', kind: 'ally', labelKey: 'rel.allies' },
+  { members: ['mira', 'nova'], worldId: 'stargazers', kind: 'ally', labelKey: 'rel.allies' },
+  { members: ['vela', 'nova'], worldId: 'stargazers', kind: 'ally', labelKey: 'rel.allies' },
 ]
 
 export const SYNERGY_DEFS: SynergyDef[] = [
   // Full trio — the headline synergy.
   {
-    id: 'three_sisters', worldId: 'cats_eye',
-    requires: ['raisei_hitomi', 'raisei_rui', 'raisei_ai'],
-    bonus: { atkPct: 0.2, defPct: 0.1 }, labelKey: 'synergy.three_sisters',
+    id: 'stargazers_trio', worldId: 'stargazers',
+    requires: ['mira', 'vela', 'nova'],
+    bonus: { atkPct: 0.2, defPct: 0.1 }, labelKey: 'synergy.trio',
   },
   // 2-of-3 partial pairs.
   {
-    id: 'sisters_hitomi_rui', worldId: 'cats_eye',
-    requires: ['raisei_hitomi', 'raisei_rui'],
-    bonus: { atkPct: 0.08 }, labelKey: 'synergy.sisters_pair',
+    id: 'pair_mira_vela', worldId: 'stargazers',
+    requires: ['mira', 'vela'],
+    bonus: { atkPct: 0.08 }, labelKey: 'synergy.pair',
   },
   {
-    id: 'sisters_hitomi_ai', worldId: 'cats_eye',
-    requires: ['raisei_hitomi', 'raisei_ai'],
-    bonus: { spdPct: 0.1 }, labelKey: 'synergy.sisters_pair',
+    id: 'pair_mira_nova', worldId: 'stargazers',
+    requires: ['mira', 'nova'],
+    bonus: { spdPct: 0.1 }, labelKey: 'synergy.pair',
   },
   {
-    id: 'sisters_rui_ai', worldId: 'cats_eye',
-    requires: ['raisei_rui', 'raisei_ai'],
-    bonus: { defPct: 0.1 }, labelKey: 'synergy.sisters_pair',
+    id: 'pair_vela_nova', worldId: 'stargazers',
+    requires: ['vela', 'nova'],
+    bonus: { defPct: 0.1 }, labelKey: 'synergy.pair',
   },
 ]
 

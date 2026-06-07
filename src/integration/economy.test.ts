@@ -45,7 +45,7 @@ describe('gold economy + shop', () => {
     const before = gs.ownedEquipment.length
     useGame.setState({ gameState: { ...gs, gold: 200 } })
 
-    await useGame.getState().buyEquipment('moonlit_dagger') // price 180
+    await useGame.getState().buyEquipment('starlit_blade') // price 180
     expect(useGame.getState().gameState!.gold).toBe(20)
     expect(useGame.getState().gameState!.ownedEquipment.length).toBe(before + 1)
   })

@@ -18,19 +18,19 @@ export const zhCN: Record<string, string> = {
   'class.tactician.blurb': '控制与增益，运筹帷幄',
   'class.medic.blurb': '治疗与护盾，团队后盾',
 
-  // Skills (names borrowed; effects are our own)
-  'skill.jiying': '疾影',
-  'skill.jixi': '疾袭',
-  'skill.yishumibao': '艺术秘宝',
-  'skill.wanmeishouguan': '完美收官',
-  'skill.wuyeyugao': '午夜预告',
-  'skill.yemuxiezou': '夜幕协奏',
-  'skill.qiyezhiyue': '绮夜之约',
-  'skill.maoyancangpin': '猫眼藏品',
-  'skill.zhiliaowurenji': '治疗无人机',
-  'skill.yingjiyuanzhu': '应急援助',
-  'skill.shentoupzhunbei': '渗透准备',
-  'skill.wanmeiyuan': '完美预案',
+  // Skills (original sample cast)
+  'skill.liuguang': '流光击',
+  'skill.xingchen': '星尘斩',
+  'skill.juxing': '聚星',
+  'skill.liuxing': '流星坠',
+  'skill.xingmang': '星芒',
+  'skill.yexing': '夜星奏',
+  'skill.xingyue': '星之约',
+  'skill.xinghui': '星辉落',
+  'skill.yuguang': '愈光',
+  'skill.xingyu': '星雨',
+  'skill.shouwang': '守望',
+  'skill.mantian': '满天星',
 
   // Monster
   'monster.procrastination': '拖延心魔',
@@ -43,23 +43,23 @@ export const zhCN: Record<string, string> = {
   'affinity.S': '羁绊 S',
 
   // Worldview (§22)
-  'world.cats_eye': '猫眼',
-  'rel.sisters': '姐妹',
-  'synergy.three_sisters': '三姐妹·合击',
-  'synergy.sisters_pair': '姐妹·默契',
+  'world.stargazers': '观星会',
+  'rel.allies': '同伴',
+  'synergy.trio': '观星·合击',
+  'synergy.pair': '观星·默契',
 
   // Equipment
   'slot.weapon': '武器',
   'slot.armor': '防具',
   'slot.trinket': '饰品',
   'equip.practice_dagger': '练习匕首',
-  'equip.moonlit_dagger': '月下匕首',
-  'equip.thief_cloak': '怪盗披风',
-  'equip.cats_eye_gem': '猫眼宝石',
-  'equip.smoke_bomb_pouch': '烟雾弹囊',
-  'equip.wanneng_decoder': '万能解码器',
-  'equip.cats_eye_card': '猫眼名片',
-  'equip.heinz_canvas': '海因兹的画作',
+  'equip.starlit_blade': '星辉之刃',
+  'equip.stargaze_cloak': '观星斗篷',
+  'equip.astral_gem': '星瞳宝石',
+  'equip.mist_pouch': '迷雾囊',
+  'equip.star_compass': '观星罗盘',
+  'equip.stargazer_seal': '观星徽记',
+  'equip.astral_canvas': '星图残卷',
 
   // Stats
   'stat.atk': '攻击',

@@ -152,3 +152,90 @@ describe('partitionTodayTodos — 今日待办 panel buckets', () => {
     expect(todayOpen.map((t) => t.id)).toEqual(['due-today'])
   })
 })
+
+describe('todo store — countdown timer', () => {
+  it('startTimer arms; sweepTimers lands one enemy hit, stamps fired, and never re-fires', async () => {
+    await useGame.getState().seedNewGame('计时', 'vanguard')
+    await useTodos.getState().add({ title: '番茄钟', priority: 'high' })
+    const id = useTodos.getState().todos[0].id
+
+    await useTodos.getState().startTimer(id, 1000)
+    // Backdate the start so the deadline is unambiguously in the past (avoids same-ms flakiness;
+    // real durations are minutes, so production never hits this edge).
+    useTodos.setState({
+      todos: useTodos.getState().todos.map((x) =>
+        x.id === id ? { ...x, timerStartedAt: new Date(Date.now() - 5000).toISOString() } : x,
+      ),
+    })
+    expect(useTodos.getState().todos[0].timerStartedAt).toBeTruthy()
+
+    await useTodos.getState().sweepTimers()
+    const t = useTodos.getState().todos[0]
+    expect(t.timerFiredAt).toBeTruthy() // spent
+    const log = useGame.getState().gameState!.combatLog
+    expect(log[log.length - 1].lines.some((l) => l.text.includes('进攻'))).toBe(true)
+    expect(useGame.getState().gameState!.monster.maxHp).toBe(900) // no growth
+
+    // Second sweep is a no-op (fired guard): nothing changes.
+    const firedAt = t.timerFiredAt
+    const logLen = useGame.getState().gameState!.combatLog.length
+    await useTodos.getState().sweepTimers()
+    expect(useTodos.getState().todos[0].timerFiredAt).toBe(firedAt)
+    expect(useGame.getState().gameState!.combatLog.length).toBe(logLen)
+  })
+
+  it('completing an armed todo disarms it — a later sweep fires nothing', async () => {
+    await useGame.getState().seedNewGame('计时', 'vanguard')
+    await useTodos.getState().add({ title: '按时完成', priority: 'med' })
+    const id = useTodos.getState().todos[0].id
+    await useTodos.getState().startTimer(id, 1)
+
+    await useTodos.getState().complete(id)
+    const done = useTodos.getState().todos[0]
+    expect(done.status).toBe('done')
+    expect(done.timerStartedAt).toBeUndefined()
+    expect(done.timerFiredAt).toBeUndefined()
+
+    const logLenBefore = useGame.getState().gameState!.combatLog.length
+    await useTodos.getState().sweepTimers()
+    expect(useGame.getState().gameState!.combatLog.length).toBe(logLenBefore) // nothing fired
+  })
+
+  it('cancelTimer disarms a running timer so it never fires', async () => {
+    await useGame.getState().seedNewGame('计时', 'vanguard')
+    await useTodos.getState().add({ title: '取消', priority: 'low' })
+    const id = useTodos.getState().todos[0].id
+    await useTodos.getState().startTimer(id, 1)
+    await useTodos.getState().cancelTimer(id)
+    expect(useTodos.getState().todos[0].timerStartedAt).toBeUndefined()
+
+    const logLen = useGame.getState().gameState!.combatLog.length
+    await useTodos.getState().sweepTimers()
+    expect(useGame.getState().gameState!.combatLog.length).toBe(logLen)
+  })
+
+  it('reopen clears the fired guard so the timer can be re-armed fresh', async () => {
+    await useGame.getState().seedNewGame('计时', 'vanguard')
+    await useTodos.getState().add({ title: '重开', priority: 'med' })
+    const id = useTodos.getState().todos[0].id
+    await useTodos.getState().startTimer(id, 1)
+    await useTodos.getState().sweepTimers() // fires once (todo stays open)
+    await useTodos.getState().complete(id)
+    await useTodos.getState().reopen(id)
+    const t = useTodos.getState().todos[0]
+    expect(t.timerStartedAt).toBeUndefined()
+    expect(t.timerFiredAt).toBeUndefined()
+    expect(t.timerDurationMs).toBeUndefined()
+  })
+
+  it('defers firing while an interactive round is mid-resolution', async () => {
+    await useGame.getState().seedNewGame('计时', 'vanguard')
+    await useTodos.getState().add({ title: '推迟', priority: 'high' })
+    const id = useTodos.getState().todos[0].id
+    await useTodos.getState().startTimer(id, 1)
+    const gs = useGame.getState().gameState!
+    useGame.setState({ gameState: { ...gs, activeRound: { todoId: 'x' } as never } })
+    await useTodos.getState().sweepTimers()
+    expect(useTodos.getState().todos[0].timerFiredAt).toBeUndefined() // deferred, not fired
+  })
+})

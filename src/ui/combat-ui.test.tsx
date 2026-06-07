@@ -34,19 +34,19 @@ describe('character detail sheet', () => {
   it('lists a companion skill with its MP cost', async () => {
     await useGame.getState().seedNewGame('阿旅', 'vanguard')
     render(<CharacterSheet characterId={companionId()} onClose={() => {}} />)
-    expect(screen.getByText('疾影')).toBeInTheDocument() // 来生瞳's L1 skill
+    expect(screen.getByText('流光击')).toBeInTheDocument() // 米拉's L1 skill
     expect(screen.getByText(/MP 8/)).toBeInTheDocument()
-    expect(screen.getByText(/次女/)).toBeInTheDocument() // detailed bio is shown
+    expect(screen.getByText(/最年轻/)).toBeInTheDocument() // detailed bio is shown
   })
 })
 
 describe('recruit modal', () => {
   it('greets a newly recruited companion with a first-meeting dialogue + bio', async () => {
     await useGame.getState().seedNewGame('阿旅', 'vanguard')
-    useGame.setState({ recruitedId: 'raisei_rui' })
+    useGame.setState({ recruitedId: 'vela' })
     render(<RecruitModal />)
-    expect(screen.getByText(/三姐妹里的大姐/)).toBeInTheDocument() // a first-meeting line
-    expect(screen.getByText(/母亲般/)).toBeInTheDocument() // the detailed bio
+    expect(screen.getByText(/我是薇拉/)).toBeInTheDocument() // a first-meeting line
+    expect(screen.getByText(/运筹帷幄/)).toBeInTheDocument() // the detailed bio
   })
 })
 
@@ -68,17 +68,17 @@ describe('battle-stage action plan', () => {
     await useGame.getState().seedNewGame('阿旅', 'vanguard')
     render(<MonsterHUD />)
 
-    // Defaults now live in a popup; open it, then click 疾影 to ASSIGN it (no instant cast).
+    // Defaults now live in a popup; open it, then click 流光击 to ASSIGN it (no instant cast).
     await user.click(screen.getByRole('button', { name: /默认行动/ }))
-    await user.click(screen.getByRole('button', { name: /疾影/ }))
-    await waitFor(() => expect(useGame.getState().gameState!.roundPlan[companionId()]).toBe('jiying'))
+    await user.click(screen.getByRole('button', { name: /流光击/ }))
+    await waitFor(() => expect(useGame.getState().gameState!.roundPlan[companionId()]).toBe('liuguang'))
 
     // Completing a task executes the round → the planned skill fires (named in the log).
     await useTodos.getState().add({ title: '打', priority: 'high' })
     await useTodos.getState().complete(useTodos.getState().todos[0].id)
     await waitFor(() => {
       const log = useGame.getState().gameState!.combatLog.flatMap((r) => r.lines.map((l) => l.text)).join('\n')
-      expect(log).toContain('疾影')
+      expect(log).toContain('流光击')
     })
   })
 })
@@ -87,14 +87,14 @@ describe('victory settlement window', () => {
   it('shows the FF-style results window with enemy, rewards, and loot', () => {
     useGame.setState({
       victorySummary: {
-        key: 1, enemy: '卢卡·罗克萨斯', xp: 193, gold: 44,
-        levelUps: [{ name: '旅人', level: 2 }], loot: ['月下匕首'], recruits: [], questComplete: false,
+        key: 1, enemy: '惰怠之偶', xp: 193, gold: 44,
+        levelUps: [{ name: '旅人', level: 2 }], loot: ['星辉之刃'], recruits: [], questComplete: false,
       },
     })
     render(<VictoryBanner />)
     expect(screen.getByText('战斗胜利')).toBeInTheDocument()
-    expect(screen.getByText(/卢卡·罗克萨斯/)).toBeInTheDocument()
-    expect(screen.getByText(/月下匕首/)).toBeInTheDocument()
+    expect(screen.getByText(/惰怠之偶/)).toBeInTheDocument()
+    expect(screen.getByText(/星辉之刃/)).toBeInTheDocument()
     expect(screen.getByText(/旅人 升至 Lv\.2/)).toBeInTheDocument()
   })
 

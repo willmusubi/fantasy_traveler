@@ -33,6 +33,14 @@ interface TodoStore {
   reorder: (orderedOpenIds: string[]) => Promise<void>
   remove: (id: string) => Promise<void>
   sweepOverdue: () => Promise<void>
+  /** Arm a countdown on an open todo: set duration + started-at, clear any prior fired guard. */
+  startTimer: (id: string, durationMs: number) => Promise<void>
+  /** Disarm a countdown: clear all three timer fields (the ✕ control / lifecycle). */
+  cancelTimer: (id: string) => Promise<void>
+  /** Fire one expiry: dispatch TaskTimerExpired + ingest + stamp timerFiredAt (one sweep iteration). */
+  fireTimerExpiry: (id: string) => Promise<void>
+  /** Boot/focus + 1s-heartbeat catch-up: fire every armed timer whose deadline has passed. */
+  sweepTimers: () => Promise<void>
 }
 
 /** Next free sort position (after the current max). */
@@ -57,6 +65,18 @@ function backfillOrder(todos: Todo[]): { todos: Todo[]; changed: Todo[] } {
 /** Sort comparator: manual order asc, then createdAt asc as a stable tiebreaker. */
 export function byOrder(a: Todo, b: Todo): number {
   return (a.order ?? 0) - (b.order ?? 0) || a.createdAt.localeCompare(b.createdAt)
+}
+
+/** True for an OPEN todo whose countdown has elapsed but hasn't fired yet
+ *  (deadline = timerStartedAt + timerDurationMs). */
+function timerExpired(t: Todo, now: number): boolean {
+  return (
+    t.status === 'open' &&
+    !!t.timerStartedAt &&
+    !t.timerFiredAt &&
+    t.timerDurationMs != null &&
+    new Date(t.timerStartedAt).getTime() + t.timerDurationMs <= now
+  )
 }
 
 /**
@@ -118,7 +138,14 @@ export const useTodos = create<TodoStore>((set, get) => ({
     // Grant-once: a todo that already paid out (then got un-checked) is re-marked done
     // WITHOUT re-running the economy — no XP/affinity/damage, no reaction. (§ user choice)
     if (todo.rewardedAt) {
-      const redone: Todo = { ...todo, status: 'done', completedAt: new Date().toISOString() }
+      const redone: Todo = {
+        ...todo,
+        status: 'done',
+        completedAt: new Date().toISOString(),
+        timerStartedAt: undefined,
+        timerFiredAt: undefined,
+        timerDurationMs: undefined,
+      }
       await todosRepo.put(redone)
       set({ todos: get().todos.map((t) => (t.id === id ? redone : t)) })
       return
@@ -134,6 +161,10 @@ export const useTodos = create<TodoStore>((set, get) => ({
       completedAt: stamp,
       rewardedAt: stamp,
       lastOverdueOn: undefined,
+      // A finished task never attacks: disarm any running countdown (both completion paths use this).
+      timerStartedAt: undefined,
+      timerFiredAt: undefined,
+      timerDurationMs: undefined,
     }
 
     // Interactive (FF-style) step-through: mark done + open the RoundResolver overlay. The felt-reward
@@ -169,6 +200,10 @@ export const useTodos = create<TodoStore>((set, get) => ({
       status: 'open',
       completedAt: undefined,
       order: nextOrder(get().todos),
+      // Re-opened tasks start disarmed; the user can set a fresh countdown.
+      timerStartedAt: undefined,
+      timerFiredAt: undefined,
+      timerDurationMs: undefined,
     }
     await todosRepo.put(reopened)
     set({ todos: get().todos.map((t) => (t.id === id ? reopened : t)) })
@@ -237,6 +272,70 @@ export const useTodos = create<TodoStore>((set, get) => ({
         affinityDelta: 0,
       })
     }
+  },
+
+  async startTimer(id, durationMs) {
+    const todo = get().todos.find((t) => t.id === id)
+    if (!todo || todo.status !== 'open' || durationMs <= 0) return
+    const armed: Todo = {
+      ...todo,
+      timerDurationMs: durationMs,
+      timerStartedAt: new Date().toISOString(),
+      timerFiredAt: undefined,
+    }
+    await todosRepo.put(armed)
+    set({ todos: get().todos.map((t) => (t.id === id ? armed : t)) })
+  },
+
+  async cancelTimer(id) {
+    const todo = get().todos.find((t) => t.id === id)
+    if (!todo) return
+    const cleared: Todo = {
+      ...todo,
+      timerDurationMs: undefined,
+      timerStartedAt: undefined,
+      timerFiredAt: undefined,
+    }
+    await todosRepo.put(cleared)
+    set({ todos: get().todos.map((t) => (t.id === id ? cleared : t)) })
+  },
+
+  async fireTimerExpiry(id) {
+    const todo = get().todos.find((t) => t.id === id)
+    // Only an open, armed, not-yet-fired timer fires. Defer while an interactive round is mid-
+    // resolution (mirrors complete()'s activeRound guard) — the next tick/sweep retries once the
+    // step-through overlay closes; timerFiredAt is stamped only on the successful dispatch below.
+    if (!todo || todo.status !== 'open' || !todo.timerStartedAt || todo.timerFiredAt) return
+    if (useGame.getState().gameState?.activeRound) return
+
+    const fired: Todo = { ...todo, timerFiredAt: new Date().toISOString() }
+    const result = await dispatchEvent(
+      { type: 'TaskTimerExpired', todo: fired },
+      { prewrite: async ({ todos }) => void (await todos.put(fired)) },
+    )
+    set({ todos: get().todos.map((t) => (t.id === id ? fired : t)) })
+    useGame.getState().ingestResult(result)
+
+    // No monsterGrew effect → ingestResult shows no toast; surface a worried companion line so the
+    // free hit registers (mirrors sweepOverdue's gentle reaction).
+    const companions = selectPartyCompanions(useGame.getState())
+    const reactor = companions[Math.floor(Math.random() * companions.length)]
+    if (reactor) {
+      const line = pickWorriedLine(reactor.id, 1)
+      useGame.getState().showReaction({
+        companionId: reactor.id,
+        text: line.text,
+        expression: line.expression,
+        affinityDelta: 0,
+      })
+    }
+  },
+
+  async sweepTimers() {
+    const now = Date.now()
+    const due = get().todos.filter((t) => timerExpired(t, now))
+    if (due.length === 0) return // cheap idle path for the 1s heartbeat (in-memory scan, no IDB)
+    for (const t of due) await get().fireTimerExpiry(t.id)
   },
 }))
 

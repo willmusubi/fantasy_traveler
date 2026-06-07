@@ -6,24 +6,24 @@ import { statsForClassAtLevel } from './leveling'
 
 function char(id: string, classId: Character['classId']): Character {
   return {
-    id, name: id, kind: 'companion', classId, worldId: 'cats_eye',
+    id, name: id, kind: 'companion', classId, worldId: 'stargazers',
     stats: statsForClassAtLevel(classId, 1), skills: [], portraitSet: 'x', createdAt: '',
   }
 }
 
 describe('effectiveStats', () => {
   it('empty context is the identity (keeps M0 combat unchanged)', () => {
-    const c = char('hitomi', 'striker') // base atk 20
+    const c = char('mira', 'striker') // base atk 20
     expect(effectiveStats(c, EMPTY_COMBAT_CONTEXT)).toEqual(c.stats)
   })
 
   it('adds equipped item bonuses for THIS character only', () => {
-    const c = char('hitomi', 'striker')
+    const c = char('mira', 'striker')
     const ctx = {
       ownedEquipment: [
-        { instanceId: 'i1', defId: 'moonlit_dagger', equippedBy: 'hitomi', acquiredAt: '' }, // +6 atk +3 spd
+        { instanceId: 'i1', defId: 'starlit_blade', equippedBy: 'mira', acquiredAt: '' }, // +6 atk +3 spd
         { instanceId: 'i2', defId: 'practice_dagger', equippedBy: 'someone_else', acquiredAt: '' }, // not ours
-        { instanceId: 'i3', defId: 'thief_cloak', acquiredAt: '' }, // unequipped
+        { instanceId: 'i3', defId: 'stargaze_cloak', acquiredAt: '' }, // unequipped
       ],
       activeSynergies: [] as SynergyDef[],
     }
@@ -32,17 +32,17 @@ describe('effectiveStats', () => {
   })
 
   it('applies synergy percentage bonuses', () => {
-    const c = char('hitomi', 'striker')
-    const syn: SynergyDef = { id: 'x', worldId: 'cats_eye', requires: [], bonus: { atkPct: 0.2 }, labelKey: 'x' }
+    const c = char('mira', 'striker')
+    const syn: SynergyDef = { id: 'x', worldId: 'stargazers', requires: [], bonus: { atkPct: 0.2 }, labelKey: 'x' }
     const ctx = { ownedEquipment: [], activeSynergies: [syn] }
     expect(effectiveStats(c, ctx).atk).toBe(Math.round(20 * 1.2))
   })
 
   it('stacks equipment (flat) then synergy (percent)', () => {
-    const c = char('hitomi', 'striker')
-    const syn: SynergyDef = { id: 'x', worldId: 'cats_eye', requires: [], bonus: { atkPct: 0.5 }, labelKey: 'x' }
+    const c = char('mira', 'striker')
+    const syn: SynergyDef = { id: 'x', worldId: 'stargazers', requires: [], bonus: { atkPct: 0.5 }, labelKey: 'x' }
     const ctx = {
-      ownedEquipment: [{ instanceId: 'i1', defId: 'moonlit_dagger', equippedBy: 'hitomi', acquiredAt: '' }],
+      ownedEquipment: [{ instanceId: 'i1', defId: 'starlit_blade', equippedBy: 'mira', acquiredAt: '' }],
       activeSynergies: [syn],
     }
     expect(effectiveStats(c, ctx).atk).toBe(Math.round((20 + 6) * 1.5))

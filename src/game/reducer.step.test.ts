@@ -17,8 +17,8 @@ function char(classId: Character['classId'], kind: Character['kind'], id: string
   return { id, name: id, kind, classId, stats: statsForClassAtLevel(classId, level), skills, portraitSet: 'x', createdAt: TODAY }
 }
 const PLAYER = char('vanguard', 'player', 'player')
-const HITOMI = char('striker', 'companion', 'hitomi', ['jiying', 'jixi', 'yishumibao', 'wanmeishouguan'], 6)
-const PARTY = [PLAYER, HITOMI]
+const MIRA = char('striker', 'companion', 'mira', ['liuguang', 'xingchen', 'juxing', 'liuxing'], 6)
+const PARTY = [PLAYER, MIRA]
 
 function makeMonster(over: Partial<Monster> = {}): Monster {
   return { id: 'm1', nameKey: 'monster.procrastination', level: 1, maxHp: 400, hp: 400, atk: 14, def: 10, spd: 9, growth: 1, ...over }
@@ -26,11 +26,11 @@ function makeMonster(over: Partial<Monster> = {}): Monster {
 
 function makeInput(gsOver: Partial<GameState> = {}): ReducerInput {
   const gameState: GameState = {
-    partyIds: ['player', 'hitomi'], monster: makeMonster(), storyStage: 0, buffs: [], moodFlags: {},
-    lastResolvedAt: '', encounterIndex: 0, unlockedCompanionIds: ['hitomi'], ownedEquipment: [],
+    partyIds: ['player', 'mira'], monster: makeMonster(), storyStage: 0, buffs: [], moodFlags: {},
+    lastResolvedAt: '', encounterIndex: 0, unlockedCompanionIds: ['mira'], ownedEquipment: [],
     resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {}, ...gsOver,
   }
-  const affinities: Record<string, Affinity> = { hitomi: freshAffinity('hitomi', TODAY) }
+  const affinities: Record<string, Affinity> = { mira: freshAffinity('mira', TODAY) }
   return { gameState, affinities, party: PARTY, now: NOW, newId: () => 'm-next', openHighCount: 0 }
 }
 
@@ -67,16 +67,16 @@ describe('interactive round parity with the synchronous path', () => {
     assertParity({}, 'low')
   })
   it('matches when a fast member laps (carried charge)', () => {
-    assertParity({ charge: { hitomi: 50 } }, 'high')
+    assertParity({ charge: { mira: 50 } }, 'high')
   })
   it('matches when the enemy is near-ready and acts early', () => {
     assertParity({ charge: { m1: 95 } }, 'high')
   })
   it('matches when a planned attack skill fires', () => {
-    assertParity({ roundPlan: { hitomi: 'jiying' } }, 'high')
+    assertParity({ roundPlan: { mira: 'liuguang' } }, 'high')
   })
   it('matches when a planned buff skill fires mid-round (ctx/mult stay frozen)', () => {
-    assertParity({ roundPlan: { hitomi: 'yishumibao' } }, 'high')
+    assertParity({ roundPlan: { mira: 'juxing' } }, 'high')
   })
   it('matches on a victory + respawn', () => {
     assertParity({ monster: makeMonster({ hp: 50 }) }, 'high')
@@ -88,15 +88,15 @@ describe('interactive round parity with the synchronous path', () => {
 
 describe('interactive choice + once-only rewards', () => {
   it('an explicit choice overrides roundPlan; "basic" forces a basic attack', () => {
-    // No plan → choosing jiying explicitly still casts it.
+    // No plan → choosing liuguang explicitly still casts it.
     const inA = makeInput({ roundPlan: {} })
     const a0 = gameReducer(inA, { type: 'RoundBegan', todo: todo('high') })
-    expect(a0.gameState.activeRound!.order[a0.gameState.activeRound!.index].id).toBe('hitomi') // striker acts first
-    const a1 = gameReducer({ ...inA, gameState: a0.gameState, affinities: a0.affinities }, { type: 'RoundAdvanced', choice: 'jiying' })
-    expect(a1.effects.some((e) => e.type === 'skillCast' && e.skillId === 'jiying')).toBe(true)
+    expect(a0.gameState.activeRound!.order[a0.gameState.activeRound!.index].id).toBe('mira') // striker acts first
+    const a1 = gameReducer({ ...inA, gameState: a0.gameState, affinities: a0.affinities }, { type: 'RoundAdvanced', choice: 'liuguang' })
+    expect(a1.effects.some((e) => e.type === 'skillCast' && e.skillId === 'liuguang')).toBe(true)
 
-    // Plan says jiying → choosing 'basic' forces a basic attack (no skillCast).
-    const inB = makeInput({ roundPlan: { hitomi: 'jiying' } })
+    // Plan says liuguang → choosing 'basic' forces a basic attack (no skillCast).
+    const inB = makeInput({ roundPlan: { mira: 'liuguang' } })
     const b0 = gameReducer(inB, { type: 'RoundBegan', todo: todo('high') })
     const b1 = gameReducer({ ...inB, gameState: b0.gameState, affinities: b0.affinities }, { type: 'RoundAdvanced', choice: 'basic' })
     expect(b1.effects.some((e) => e.type === 'skillCast')).toBe(false)
@@ -106,6 +106,6 @@ describe('interactive choice + once-only rewards', () => {
   it('per-task rewards fire exactly once across the whole stepped round', () => {
     const step = runInteractive(makeInput(), todo('high'))
     expect(step.characterStats.player.xp).toBe(TODO_XP.high) // one chip, not ×turns
-    expect(step.affinities.hitomi.points).toBe(5) // one completion's affinity
+    expect(step.affinities.mira.points).toBe(5) // one completion's affinity
   })
 })

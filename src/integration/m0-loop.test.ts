@@ -25,7 +25,7 @@ beforeEach(async () => {
 
 describe('M0 end-to-end loop', () => {
   it('onboard → add high todos → complete → monster damaged, affinity rank-up, XP, reaction', async () => {
-    // 1. Onboarding seeds the game (player vanguard + 来生瞳 + demo affinity 90).
+    // 1. Onboarding seeds the game (player vanguard + 米拉 + demo affinity 90).
     await useGame.getState().seedNewGame('测试旅人', 'vanguard')
     const g0 = useGame.getState()
     expect(g0.gameState).toBeTruthy()
@@ -125,7 +125,7 @@ describe('M0 end-to-end loop', () => {
   it('completing a story quest recruits a companion + drops loot (full pipeline, offline fallback)', async () => {
     await useGame.getState().seedNewGame('阿旅', 'vanguard')
     // No API key in tests → buildAndGenerateQuest falls back to the authored quest.
-    await useQuest.getState().startQuest('cats_eye')
+    await useQuest.getState().startQuest('stargazers')
     expect(useGame.getState().gameState!.activeQuestId).toBeTruthy()
     expect(useGame.getState().gameState!.monster.displayName).toBeTruthy() // encounter enemy
 
@@ -140,12 +140,12 @@ describe('M0 end-to-end loop', () => {
 
     const gs = useGame.getState().gameState!
     expect(gs.activeQuestId).toBeUndefined() // quest completed
-    // 来生泪 recruited: a real companion Character + its own affinity record exist now.
+    // 薇拉 recruited: a real companion Character + its own affinity record exist now.
     const companions = useGame.getState().characters.filter((c) => c.kind === 'companion')
-    expect(companions.some((c) => c.id === 'raisei_rui')).toBe(true)
-    expect(useGame.getState().affinities['raisei_rui']).toBeTruthy()
-    expect(gs.unlockedCompanionIds).toContain('raisei_rui')
+    expect(companions.some((c) => c.id === 'vela')).toBe(true)
+    expect(useGame.getState().affinities['vela']).toBeTruthy()
+    expect(gs.unlockedCompanionIds).toContain('vela')
     // Loot dropped.
-    expect(gs.ownedEquipment.some((e) => e.defId === 'moonlit_dagger')).toBe(true)
+    expect(gs.ownedEquipment.some((e) => e.defId === 'starlit_blade')).toBe(true)
   })
 })

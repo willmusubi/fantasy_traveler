@@ -22,34 +22,34 @@ export const EQUIPMENT_DEFS: Record<string, EquipmentDef> = {
     id: 'practice_dagger', nameKey: 'equip.practice_dagger', slot: 'weapon',
     bonus: { atk: 2 }, price: 30,
   },
-  moonlit_dagger: {
-    id: 'moonlit_dagger', nameKey: 'equip.moonlit_dagger', slot: 'weapon', worldId: 'cats_eye',
+  starlit_blade: {
+    id: 'starlit_blade', nameKey: 'equip.starlit_blade', slot: 'weapon', worldId: 'stargazers',
     bonus: { atk: 6, spd: 3 }, price: 180,
   },
-  thief_cloak: {
-    id: 'thief_cloak', nameKey: 'equip.thief_cloak', slot: 'armor', worldId: 'cats_eye',
+  stargaze_cloak: {
+    id: 'stargaze_cloak', nameKey: 'equip.stargaze_cloak', slot: 'armor', worldId: 'stargazers',
     bonus: { def: 5, maxHp: 20 }, price: 150,
   },
-  cats_eye_gem: {
-    id: 'cats_eye_gem', nameKey: 'equip.cats_eye_gem', slot: 'trinket', worldId: 'cats_eye',
+  astral_gem: {
+    id: 'astral_gem', nameKey: 'equip.astral_gem', slot: 'trinket', worldId: 'stargazers',
     bonus: { mag: 5, spd: 2 }, price: 160,
   },
-  smoke_bomb_pouch: {
-    id: 'smoke_bomb_pouch', nameKey: 'equip.smoke_bomb_pouch', slot: 'trinket', worldId: 'cats_eye',
+  mist_pouch: {
+    id: 'mist_pouch', nameKey: 'equip.mist_pouch', slot: 'trinket', worldId: 'stargazers',
     bonus: { spd: 4, atk: 2 }, price: 140,
   },
-  // Cat's Eye canon items (quest loot — not sold).
-  wanneng_decoder: {
-    id: 'wanneng_decoder', nameKey: 'equip.wanneng_decoder', slot: 'trinket', worldId: 'cats_eye',
-    bonus: { mag: 6, spd: 3 }, // 来生爱's all-purpose decoder
+  // 观星会 canon items (quest loot — not sold).
+  star_compass: {
+    id: 'star_compass', nameKey: 'equip.star_compass', slot: 'trinket', worldId: 'stargazers',
+    bonus: { mag: 6, spd: 3 }, // 诺娃's all-purpose stargazing compass
   },
-  cats_eye_card: {
-    id: 'cats_eye_card', nameKey: 'equip.cats_eye_card', slot: 'trinket', worldId: 'cats_eye',
-    bonus: { atk: 4, spd: 4 }, // the signature calling card (予告状)
+  stargazer_seal: {
+    id: 'stargazer_seal', nameKey: 'equip.stargazer_seal', slot: 'trinket', worldId: 'stargazers',
+    bonus: { atk: 4, spd: 4 }, // the order's signature seal
   },
-  heinz_canvas: {
-    id: 'heinz_canvas', nameKey: 'equip.heinz_canvas', slot: 'armor', worldId: 'cats_eye',
-    bonus: { maxHp: 24, mag: 4 }, // a recovered Heinz painting — inspiration
+  astral_canvas: {
+    id: 'astral_canvas', nameKey: 'equip.astral_canvas', slot: 'armor', worldId: 'stargazers',
+    bonus: { maxHp: 24, mag: 4 }, // a recovered star-chart — inspiration
   },
 }
 

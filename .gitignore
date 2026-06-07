@@ -26,5 +26,21 @@ coverage
 # TypeScript incremental build cache
 *.tsbuildinfo
 
-# Claude Code local settings (machine-local permission grants, not shared)
-.claude/settings.local.json
+# --- Personal AI tooling, design notes & planning (kept local, not shared) ---
+.claude/
+.impeccable.md
+docs/specs/
+
+# --- Character assets: bring your own (see public/portraits/README.md). The shipped cast
+#     (米拉 / 薇拉 / 诺娃) is an ORIGINAL placeholder; portrait / art files are generated
+#     locally and never committed, to keep the repo lean and IP-free. ---
+docs/asset-pipeline/
+docs/avator-pics/
+public/portraits/*.png
+public/portraits-px/
+public/art/
+public/sprites/
+
+# Python caches (from local art tooling)
+__pycache__/
+*.pyc

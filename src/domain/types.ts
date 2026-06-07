@@ -13,7 +13,7 @@ export type ClassId =
   | 'tactician'
   | 'medic'
 
-export type SkillId = string // skill ids = nameKey suffix, e.g. "jiying"
+export type SkillId = string // skill ids = nameKey suffix, e.g. "liuguang"
 
 export interface Stats {
   level: number
@@ -59,7 +59,7 @@ export interface Character {
   classId: ClassId
   stats: Stats
   skills: SkillId[]
-  /** Asset key prefix, e.g. "raisei_hitomi" → raisei_hitomi_neutral.png */
+  /** Asset key prefix, e.g. "mira" → mira_neutral.png */
   portraitSet: string
   /** 专属烙印 signature name — display-only flavor in v1. */
   brand?: string
@@ -103,6 +103,13 @@ export interface Todo {
   rewardedAt?: string
   /** YYYY-MM-DD (local) of the last day a TodoOverdue economy event fired. */
   lastOverdueOn?: string
+  /** Optional countdown timer (Pomodoro-style, manual ▶ start). All three optional for
+   *  back-compat. RUNNING iff `timerStartedAt` is set AND `timerFiredAt` is unset AND status
+   *  is 'open'. On expiry the 心魔 lands one ordinary attack, then `timerFiredAt` is stamped
+   *  (spent — never re-fires). Cleared on cancel / complete / reopen. */
+  timerDurationMs?: number
+  timerStartedAt?: string
+  timerFiredAt?: string
 }
 
 /** A recurring daily-check (Habitica "Daily"). Completing one offers a buff choice (it does
@@ -305,14 +312,14 @@ export type GameEffect =
   | { type: 'monsterGrew'; hpDelta: number; atkDelta: number }
   | { type: 'affinity'; characterId: ID; amount: number; rankedUpTo: string | null }
   | { type: 'charXp'; characterId: ID; amount: number; levelsGained: number }
-  | { type: 'victory'; defeatedMonsterId: ID; storyStage: number }
+  | { type: 'victory'; defeatedMonsterId: ID; storyStage: number; nextEnemyHp?: number }
   | { type: 'mood'; characterId: ID; flag: MoodFlag }
   // Active combat (skills / enemy turn-attacks / resources)
-  | { type: 'skillCast'; skillId: SkillId; casterId: ID; skillKind: 'attack' | 'heal' | 'buff' | 'debuff'; amount: number }
+  | { type: 'skillCast'; skillId: SkillId; casterId: ID; skillKind: 'attack' | 'heal' | 'buff' | 'debuff'; amount: number; monsterHpAfter?: number }
   | { type: 'heal'; targetId: ID; amount: number }
   | { type: 'enemyAttack'; targetId: ID; amount: number }
   | { type: 'downed'; characterId: ID }
-  | { type: 'partyWiped' }
+  | { type: 'partyWiped'; monsterHealed?: number; monsterHpAfter?: number }
   // Worldview / storyline (§22)
   | { type: 'encounterCleared'; questId: ID; encounterIndex: number; victoryText?: string; nextEnemy?: string }
   | { type: 'questCompleted'; questId: ID; reward: QuestReward }

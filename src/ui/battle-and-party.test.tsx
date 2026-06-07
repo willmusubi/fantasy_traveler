@@ -42,7 +42,7 @@ describe('battle + party UI', () => {
     render(<MonsterHUD />)
     const bar = screen.getByLabelText('出手顺序')
     // Two rounds are previewed, so each actor appears more than once (current + next round, plus laps).
-    expect(within(bar).getAllByText('来生瞳').length).toBeGreaterThan(0) // a party member is queued
+    expect(within(bar).getAllByText('米拉').length).toBeGreaterThan(0) // a party member is queued
     expect(within(bar).getAllByText('拖延心魔').length).toBeGreaterThan(0) // and so is the enemy
     expect(within(bar).getByText(/下一回合/)).toBeInTheDocument() // the round divider
   })
@@ -50,10 +50,10 @@ describe('battle + party UI', () => {
   it('shows each member’s planned action as a badge on its battle sprite', async () => {
     await useGame.getState().seedNewGame('阿旅', 'vanguard')
     const companion = useGame.getState().characters.find((c) => c.kind === 'companion')!
-    await useGame.getState().setRoundAction(companion.id, 'jiying') // plan 来生瞳 → 疾影
+    await useGame.getState().setRoundAction(companion.id, 'liuguang') // plan 米拉 → 流光击
     const { container } = render(<MonsterHUD />)
     const badges = [...container.querySelectorAll('.bsprite-action')].map((b) => b.textContent)
-    expect(badges).toContain('疾影') // 来生瞳's planned skill, on her sprite
+    expect(badges).toContain('流光击') // 米拉's planned skill, on her sprite
     expect(badges.some((b) => b?.includes('普攻'))).toBe(true) // the skill-less player defaults to 普攻
   })
 })

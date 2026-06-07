@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { WORLD_DEFS } from '../world/worlds'
 import { coerceQuest, materializeQuest } from './storyline'
 
-const world = WORLD_DEFS.cats_eye
+const world = WORLD_DEFS.stargazers
 const enc = (over: object = {}) => ({ enemyName: 'x', hpScale: 1, defScale: 1, ...over })
 
 describe('coerceQuest (LLM trust boundary)', () => {
@@ -18,16 +18,16 @@ describe('coerceQuest (LLM trust boundary)', () => {
 
   it('drops hallucinated equipment, keeps known ids', () => {
     const bp = coerceQuest(
-      { title: 't', lore: 'l', encounters: [enc(), enc()], reward: { equipmentDefIds: ['moonlit_dagger', 'EXCALIBUR_9000'], unlockCompanionIds: [] } },
+      { title: 't', lore: 'l', encounters: [enc(), enc()], reward: { equipmentDefIds: ['starlit_blade', 'EXCALIBUR_9000'], unlockCompanionIds: [] } },
       world, [],
     )
-    expect(bp.reward.equipmentDefIds).toEqual(['moonlit_dagger'])
+    expect(bp.reward.equipmentDefIds).toEqual(['starlit_blade'])
   })
 
   it('drops equipment scoped to a different world (world-scoped reward pool)', () => {
-    const otherWorld = { ...world, id: 'three_kingdoms' } // moonlit_dagger is cats_eye-only
+    const otherWorld = { ...world, id: 'three_kingdoms' } // starlit_blade is stargazers-only
     const bp = coerceQuest(
-      { title: 't', lore: 'l', encounters: [enc(), enc()], reward: { equipmentDefIds: ['moonlit_dagger', 'practice_dagger'], unlockCompanionIds: [] } },
+      { title: 't', lore: 'l', encounters: [enc(), enc()], reward: { equipmentDefIds: ['starlit_blade', 'practice_dagger'], unlockCompanionIds: [] } },
       otherWorld, [],
     )
     expect(bp.reward.equipmentDefIds).toEqual(['practice_dagger']) // agnostic kept, wrong-world dropped
@@ -35,19 +35,19 @@ describe('coerceQuest (LLM trust boundary)', () => {
 
   it('links an encounter to a canon antagonist when the name matches the roster', () => {
     const bp = coerceQuest(
-      { title: 't', lore: 'l', encounters: [enc({ enemyName: '卢卡·罗克萨斯' }), enc()], reward: {} },
+      { title: 't', lore: 'l', encounters: [enc({ enemyName: '惰怠之偶' }), enc()], reward: {} },
       world, [],
     )
-    expect(bp.encounters[0].antagonistId).toBe('luca_roxas')
+    expect(bp.encounters[0].antagonistId).toBe('sloth_idol')
   })
 
   it('only unlocks world natives that are not already unlocked', () => {
     const bp = coerceQuest(
-      { title: 't', lore: 'l', encounters: [enc(), enc()], reward: { equipmentDefIds: [], unlockCompanionIds: ['raisei_rui', 'raisei_hitomi', 'tifa', 'raisei_ai'] } },
-      world, ['raisei_hitomi'],
+      { title: 't', lore: 'l', encounters: [enc(), enc()], reward: { equipmentDefIds: [], unlockCompanionIds: ['vela', 'mira', 'outsider', 'nova'] } },
+      world, ['mira'],
     )
-    // hitomi already unlocked → dropped; tifa not native → dropped; rui + ai kept
-    expect([...bp.reward.unlockCompanionIds].sort()).toEqual(['raisei_ai', 'raisei_rui'])
+    // mira already unlocked → dropped; outsider not native → dropped; vela + nova kept
+    expect([...bp.reward.unlockCompanionIds].sort()).toEqual(['nova', 'vela'])
   })
 
   it('throws when fewer than 2 encounters', () => {
@@ -68,7 +68,7 @@ describe('materializeQuest', () => {
   it('assigns indices, status active, and metadata', () => {
     const bp = coerceQuest({ title: '行动', lore: 'l', encounters: [enc(), enc(), enc()], reward: {} }, world, [])
     let n = 0
-    const q = materializeQuest(bp, 'cats_eye', new Date(2026, 4, 29), () => `id-${n++}`, 'claude-sonnet-4-6')
+    const q = materializeQuest(bp, 'stargazers', new Date(2026, 4, 29), () => `id-${n++}`, 'claude-sonnet-4-6')
     expect(q.id).toBe('id-0')
     expect(q.status).toBe('active')
     expect(q.encounters.map((e) => e.index)).toEqual([0, 1, 2])

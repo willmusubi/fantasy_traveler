@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { isOverdue } from '../domain/dates'
 import type { Priority, Todo } from '../domain/types'
 import { partitionTodayTodos, useTodos } from '../state/todoStore'
@@ -13,6 +13,135 @@ function Pips({ priority }: { priority: Priority }) {
       {[0, 1, 2].map((i) => (
         <span key={i} className={`pip ${i < n ? `on ${priority}` : ''}`} />
       ))}
+    </span>
+  )
+}
+
+const TIMER_PRESETS = [15, 25, 45] as const // minutes
+
+function fmtMMSS(ms: number): string {
+  const s = Math.max(0, Math.ceil(ms / 1000))
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
+/** Per-row countdown affordance (open todos only). Idle/spent collapses to a compact ⏱ command that
+ *  drops a miniature FF window (preset durations + a custom-minutes field); running shows live MM:SS
+ *  + ✕ cancel. On expiry the shared Dashboard heartbeat fires the enemy attack via the store; this
+ *  component only arms/cancels and re-renders the live digits. */
+function TodoTimer({ todo }: { todo: Todo }) {
+  const startTimer = useTodos((s) => s.startTimer)
+  const cancelTimer = useTodos((s) => s.cancelTimer)
+  const [open, setOpen] = useState(false)
+  const [custom, setCustom] = useState('')
+  const wrapRef = useRef<HTMLSpanElement>(null)
+  const armed = !!todo.timerStartedAt && !todo.timerFiredAt
+
+  // Display-only heartbeat: re-render each second while armed so the MM:SS counts down.
+  const [, force] = useState(0)
+  useEffect(() => {
+    if (!armed) return
+    const h = window.setInterval(() => force((n) => n + 1), 1000)
+    return () => window.clearInterval(h)
+  }, [armed])
+
+  // Dismiss the dropdown on outside-click / Escape (an FF menu closes when you step away).
+  useEffect(() => {
+    if (!open) return
+    const onDown = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false)
+    }
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', onDown)
+    document.addEventListener('keydown', onKey)
+    return () => {
+      document.removeEventListener('mousedown', onDown)
+      document.removeEventListener('keydown', onKey)
+    }
+  }, [open])
+
+  const arm = (min: number) => {
+    if (!Number.isFinite(min) || min <= 0) return
+    void startTimer(todo.id, min * 60_000)
+    setOpen(false)
+    setCustom('')
+  }
+
+  if (armed) {
+    const remain = new Date(todo.timerStartedAt!).getTime() + (todo.timerDurationMs ?? 0) - Date.now()
+    const low = remain <= 60_000
+    return (
+      <span className={`todo-timer running${low ? ' low' : ''}`} title="倒计时进行中（超时心魔会发动一次进攻）">
+        <span className="tt-count">⏱ {fmtMMSS(remain)}</span>
+        <button className="tt-x" aria-label="取消倒计时" onClick={() => void cancelTimer(todo.id)}>
+          ✕
+        </button>
+      </span>
+    )
+  }
+
+  const spent = !!todo.timerFiredAt
+  return (
+    <span className="todo-timer" ref={wrapRef}>
+      <button
+        type="button"
+        className={`tt-trigger${spent ? ' spent' : ''}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={spent ? '时间到，重新设定限时' : '设定限时'}
+        title={spent ? '超时已被进攻，点此重新计时' : '设定限时：超时未完成，心魔会发动一次进攻'}
+        onClick={() => setOpen((v) => !v)}
+      >
+        {spent ? '⏱ 时间到' : '⏱'}
+      </button>
+
+      {open && (
+        <div className="tt-menu" role="menu">
+          <div className="tt-menu-head">限时专注</div>
+          <div className="tt-presets">
+            {TIMER_PRESETS.map((m) => (
+              <button
+                key={m}
+                type="button"
+                className="tt-preset"
+                role="menuitem"
+                aria-label={`开始 ${m} 分钟倒计时`}
+                onClick={() => arm(m)}
+              >
+                <span className="tt-preset-n">{m}</span>
+                <span className="tt-preset-u">分</span>
+              </button>
+            ))}
+          </div>
+          <form
+            className="tt-custom"
+            onSubmit={(e) => {
+              e.preventDefault()
+              arm(Number(custom))
+            }}
+          >
+            <input
+              className="input tt-custom-input"
+              type="number"
+              min={1}
+              placeholder="自定义"
+              aria-label="自定义分钟"
+              value={custom}
+              onChange={(e) => setCustom(e.target.value)}
+            />
+            <span className="tt-custom-u">分</span>
+            <button
+              type="submit"
+              className="btn btn-primary tt-custom-go"
+              disabled={!custom || Number(custom) <= 0}
+              aria-label="开始自定义倒计时"
+            >
+              开始
+            </button>
+          </form>
+        </div>
+      )}
     </span>
   )
 }
@@ -79,6 +208,7 @@ function TodoRow({
           <Pips priority={todo.priority} />
           {todo.due && <span>📅 {todo.due}</span>}
           {overdue && <span className="overdue-tag">⚠ 已逾期</span>}
+          {!done && <TodoTimer todo={todo} />}
         </div>
       </div>
       <button className="todo-edit-btn" aria-label="编辑" onClick={onEdit}>

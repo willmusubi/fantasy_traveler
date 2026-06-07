@@ -36,7 +36,7 @@ export function buildLogEntry(effects: GameEffect[], ctx: LogContext): CombatLog
       case 'skillCast': {
         const caster = nameOf(e.casterId)
         const sk = skillName(e.skillId)
-        if (e.skillKind === 'attack') lines.push({ icon: '✦', text: `${caster} 施放「${sk}」→ ${enemyName}  -${e.amount}`, tone: 'good' })
+        if (e.skillKind === 'attack') lines.push({ icon: '✦', text: `${caster} 施放「${sk}」→ ${enemyName}  -${e.amount}${e.monsterHpAfter != null ? `（剩 ${e.monsterHpAfter}）` : ''}`, tone: 'good' })
         else if (e.skillKind === 'heal') lines.push({ icon: '✦', text: `${caster} 施放「${sk}」，恢复 ${e.amount} HP`, tone: 'good' })
         else if (e.skillKind === 'buff') lines.push({ icon: '✦', text: `${caster} 施放「${sk}」，全队攻击 +${e.amount}%`, tone: 'good' })
         else lines.push({ icon: '✦', text: `${caster} 施放「${sk}」，${enemyName} 防御 -${e.amount}%`, tone: 'good' })
@@ -45,7 +45,7 @@ export function buildLogEntry(effects: GameEffect[], ctx: LogContext): CombatLog
       case 'damage':
         // One line per individual basic-attack hit (the speed-ordered round), naming who struck.
         // A planned skill's damage is tagged `fromSkill` — its paired skillCast line covers it.
-        if (!e.fromSkill) lines.push({ icon: '⚔', text: `${nameOf(e.actorId)} → ${enemyName}  -${e.amount}`, tone: 'good' })
+        if (!e.fromSkill) lines.push({ icon: '⚔', text: `${nameOf(e.actorId)} → ${enemyName}  -${e.amount}（剩 ${e.monsterHpAfter}）`, tone: 'good' })
         break
       case 'enemyAttack':
         lines.push({ icon: '💥', text: `${enemyName} 进攻 ${nameOf(e.targetId)}  -${e.amount}`, tone: 'bad' })
@@ -57,7 +57,13 @@ export function buildLogEntry(effects: GameEffect[], ctx: LogContext): CombatLog
         lines.push({ icon: '✖', text: `${nameOf(e.characterId)} 倒下了！`, tone: 'bad' })
         break
       case 'partyWiped':
-        lines.push({ icon: '💀', text: '队伍被击溃，撤退重整旗鼓…', tone: 'bad' })
+        lines.push({
+          icon: '💀',
+          text: e.monsterHealed
+            ? `队伍被击溃，撤退重整旗鼓…（${enemyName} 趁机回复 ${e.monsterHealed}，剩 ${e.monsterHpAfter}）`
+            : '队伍被击溃，撤退重整旗鼓…',
+          tone: 'bad',
+        })
         break
       case 'affinity':
         lines.push({ icon: '💗', text: `与 ${nameOf(e.characterId)} 的羁绊 +${e.amount}${e.rankedUpTo ? `（升至 ${e.rankedUpTo}）` : ''}`, tone: 'good' })
@@ -68,6 +74,7 @@ export function buildLogEntry(effects: GameEffect[], ctx: LogContext): CombatLog
         break
       case 'victory':
         lines.push({ icon: '🏆', text: `击败了 ${enemyName}！冒险推进到第 ${e.storyStage} 阶段`, tone: 'good' })
+        if (e.nextEnemyHp != null) lines.push({ icon: '➡', text: `新的心魔现身（HP ${e.nextEnemyHp}）`, tone: 'info' })
         break
       case 'encounterCleared':
         if (e.victoryText) lines.push({ icon: '🎬', text: e.victoryText, tone: 'good' })

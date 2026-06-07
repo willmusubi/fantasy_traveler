@@ -197,8 +197,9 @@ function wipeCheck(t: Turn): void {
     setR(t, c, { hp: sOf(t, c).maxHp * WIPE_REVIVE_HP_PCT, mp: rOf(t, c).mp })
   }
   const m = t.gs.monster
-  t.gs.monster = { ...m, hp: Math.min(m.maxHp, Math.round(m.hp + m.maxHp * WIPE_MONSTER_HEAL_PCT)) }
-  t.effects.push({ type: 'partyWiped' })
+  const hpAfter = Math.min(m.maxHp, Math.round(m.hp + m.maxHp * WIPE_MONSTER_HEAL_PCT))
+  t.gs.monster = { ...m, hp: hpAfter }
+  t.effects.push({ type: 'partyWiped', monsterHealed: hpAfter - m.hp, monsterHpAfter: hpAfter })
 }
 
 function healChar(t: Turn, c: Character, amount: number): void {
@@ -282,7 +283,7 @@ function resolveMonsterDamage(t: Turn, dmg: number, actorId: ID, fromSkill = fal
     }
   } else {
     t.gs.monster = spawnMonster(t.gs.storyStage, t.input.openHighCount, newId)
-    t.effects.push({ type: 'victory', defeatedMonsterId: monsterId, storyStage: t.gs.storyStage })
+    t.effects.push({ type: 'victory', defeatedMonsterId: monsterId, storyStage: t.gs.storyStage, nextEnemyHp: t.gs.monster.maxHp })
   }
   return true
 }
@@ -304,6 +305,8 @@ export function gameReducer(input: ReducerInput, event: DomainEvent): ReducerRes
       return reduceRoundAdvanced(input, event.choice, event.auto)
     case 'TodoOverdue':
       return reduceTodoOverdue(input)
+    case 'TaskTimerExpired':
+      return reduceTaskTimerExpired(input)
     case 'JournalWritten':
       return reduceJournalWritten(input, event.entry.mood)
     // Unwired — kept for the extensibility contract.
@@ -327,7 +330,8 @@ function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: Comb
     // Physical skills scale off atk; magic skills (scaling: 'mag') off the caster's magic.
     const scaleStat = skill.scaling === 'mag' ? eff.mag : eff.atk
     const dmg = Math.max(1, Math.round(scaleStat * skill.power * SKILL_ATK_MULT - t.gs.monster.def))
-    t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'attack', amount: dmg })
+    const monsterHpAfter = Math.max(0, t.gs.monster.hp - dmg) // shown in the log so it reconciles with the bar
+    t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'attack', amount: dmg, monsterHpAfter })
     return resolveMonsterDamage(t, dmg, casterId, true)
   }
   if (skill.kind === 'heal') {
@@ -423,7 +427,10 @@ function resolveTurnInto(
   if (skill && r.mp >= skill.mpCost && r.hp > (skill.hpCost ?? 0)) {
     return applySkillEffect(t, member, skill, ctx) // planned skill fires (spends MP/HP)
   }
-  const dmg = Math.max(1, Math.round(effectiveStats(member, ctx).atk * rctx.mult - t.gs.monster.def))
+  // Basic attack scales off the member's BEST offensive stat: casters (high mag, low atk) swing with
+  // magic so they aren't floored to 1 by the boss's defense; physical units still use atk (atk≥mag).
+  const eff = effectiveStats(member, ctx)
+  const dmg = Math.max(1, Math.round(Math.max(eff.atk, eff.mag) * rctx.mult - t.gs.monster.def))
   return resolveMonsterDamage(t, dmg, member.id) // basic attack (priority-scaled)
 }
 
@@ -564,6 +571,23 @@ function reduceTodoOverdue(input: ReducerInput): ReducerResult {
   wipeCheck(t)
 
   // The active companion becomes worried (biases next greeting/canned line).
+  const companion = activeCompanion(t.party)
+  if (companion) {
+    t.gs.moodFlags = { ...t.gs.moodFlags, [companion.id]: 'worried' }
+    t.effects.push({ type: 'mood', characterId: companion.id, flag: 'worried' })
+  }
+  return finishTurn(t)
+}
+
+/** A todo's countdown ran out before completion: the 心魔 lands ONE ordinary attack (a normal
+ *  enemy turn — atk × ENEMY_ATK_MULT on the sturdiest member) on the party. Unlike TodoOverdue it
+ *  does NOT grow the monster (it didn't feed on a missed deadline; it just got a free swing). Fires
+ *  once — the store stamps timerFiredAt so it never repeats. */
+function reduceTaskTimerExpired(input: ReducerInput): ReducerResult {
+  const t = newTurn(input)
+  dealToParty(t, t.gs.monster.atk * ENEMY_ATK_MULT, combatCtx(input))
+  wipeCheck(t)
+
   const companion = activeCompanion(t.party)
   if (companion) {
     t.gs.moodFlags = { ...t.gs.moodFlags, [companion.id]: 'worried' }

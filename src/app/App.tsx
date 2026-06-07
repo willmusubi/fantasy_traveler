@@ -42,6 +42,7 @@ export function App() {
       // Overdue + habit-streak sweeps run on load (and on tab focus) — only once a game exists.
       if (useGame.getState().gameState) {
         await useTodos.getState().sweepOverdue()
+        await useTodos.getState().sweepTimers() // fire any countdowns that expired while away
         await useHabits.getState().sweepHabits()
       }
     })()
@@ -49,6 +50,7 @@ export function App() {
     const onVisible = () => {
       if (document.visibilityState === 'visible' && useGame.getState().gameState) {
         void useTodos.getState().sweepOverdue()
+        void useTodos.getState().sweepTimers()
         void useHabits.getState().sweepHabits()
       }
     }

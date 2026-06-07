@@ -59,6 +59,57 @@ describe('TodoPanel interactions', () => {
   })
 })
 
+describe('TodoPanel — countdown timer', () => {
+  it('opens the dropdown and arms a countdown from a preset', async () => {
+    const user = userEvent.setup()
+    await useTodos.getState().add({ title: '专注', priority: 'high' })
+    render(<TodoPanel />)
+
+    await user.click(screen.getByLabelText('设定限时')) // open the FF command window
+    await user.click(await screen.findByLabelText('开始 25 分钟倒计时'))
+    expect(await screen.findByLabelText('取消倒计时')).toBeInTheDocument()
+    expect(useTodos.getState().todos[0].timerStartedAt).toBeTruthy()
+    expect(useTodos.getState().todos[0].timerDurationMs).toBe(25 * 60_000)
+  })
+
+  it('arms a custom duration from the dropdown', async () => {
+    const user = userEvent.setup()
+    await useTodos.getState().add({ title: '自定义', priority: 'med' })
+    render(<TodoPanel />)
+
+    await user.click(screen.getByLabelText('设定限时'))
+    await user.type(await screen.findByLabelText('自定义分钟'), '30')
+    await user.click(screen.getByLabelText('开始自定义倒计时'))
+    expect(await screen.findByLabelText('取消倒计时')).toBeInTheDocument()
+    expect(useTodos.getState().todos[0].timerDurationMs).toBe(30 * 60_000)
+  })
+
+  it('cancel disarms the countdown back to the trigger', async () => {
+    const user = userEvent.setup()
+    await useTodos.getState().add({ title: '取消', priority: 'low' })
+    render(<TodoPanel />)
+
+    await user.click(screen.getByLabelText('设定限时'))
+    await user.click(await screen.findByLabelText('开始 15 分钟倒计时'))
+    await user.click(await screen.findByLabelText('取消倒计时'))
+    expect(await screen.findByLabelText('设定限时')).toBeInTheDocument()
+    expect(useTodos.getState().todos[0].timerStartedAt).toBeUndefined()
+  })
+
+  it('shows the spent state once the timer has fired', async () => {
+    await useTodos.getState().add({ title: '已超时', priority: 'med' })
+    const id = useTodos.getState().todos[0].id
+    const stamp = new Date().toISOString()
+    useTodos.setState({
+      todos: useTodos.getState().todos.map((t) =>
+        t.id === id ? { ...t, timerStartedAt: stamp, timerDurationMs: 1000, timerFiredAt: stamp } : t,
+      ),
+    })
+    render(<TodoPanel />)
+    expect(await screen.findByText('⏱ 时间到')).toBeInTheDocument()
+  })
+})
+
 describe('ErrorBoundary', () => {
   it('shows a fallback for the failing region and lets siblings live', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {})

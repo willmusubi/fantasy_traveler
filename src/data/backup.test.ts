@@ -21,13 +21,13 @@ const player: Character = {
 }
 const todo: Todo = { id: 't1', title: '写测试', priority: 'high', status: 'open', tags: [], createdAt: '2026-06-03' }
 const habit: Habit = { id: 'h1', title: '起床', schedule: { kind: 'daily' }, streak: 2, bestStreak: 5, order: 1, createdAt: '2026-06-03' }
-const affinity: Affinity = { characterId: 'raisei_hitomi', points: 90, rank: 'C', unlockedSupports: [], dailyGained: 0, dailyGainedOn: '2026-06-03' }
+const affinity: Affinity = { characterId: 'mira', points: 90, rank: 'C', unlockedSupports: [], dailyGained: 0, dailyGainedOn: '2026-06-03' }
 const journal: JournalEntry = { id: 'j1', date: '2026-06-03', mood: 'good', body: '测试日记', createdAt: '2026-06-03' }
 const gameState: GameState = {
-  partyIds: ['p', 'raisei_hitomi'],
+  partyIds: ['p', 'mira'],
   monster: { id: 'm', nameKey: 'monster.procrastination', level: 1, maxHp: 400, hp: 400, atk: 14, def: 10, spd: 9, growth: 1 },
   storyStage: 2, buffs: [], moodFlags: {}, lastResolvedAt: '', encounterIndex: 0,
-  unlockedCompanionIds: ['raisei_hitomi'], ownedEquipment: [], resources: {}, gold: 42, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {},
+  unlockedCompanionIds: ['mira'], ownedEquipment: [], resources: {}, gold: 42, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {},
 }
 
 async function seed() {

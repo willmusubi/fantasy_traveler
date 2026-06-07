@@ -35,7 +35,7 @@ describe('combat log', () => {
       await useTodos.getState().complete(useTodos.getState().todos.find((x) => x.status === 'open')!.id)
     }
     const all = useGame.getState().gameState!.combatLog.flatMap((r) => r.lines.map((l) => l.text)).join('\n')
-    expect(all).toContain('→') // a party member struck the enemy ("来生瞳 → 拖延心魔 -40")
+    expect(all).toContain('→') // a party member struck the enemy ("米拉 → 拖延心魔 -40")
     expect(all).toContain('进攻') // the enemy attacked on its turn once charged
     expect(all).toContain('经验')
     expect(all).toContain('金币')
@@ -43,11 +43,11 @@ describe('combat log', () => {
 
   it('records the caster and skill name when a planned skill fires', async () => {
     await useGame.getState().seedNewGame('阿旅', 'vanguard')
-    await useGame.getState().setRoundAction(companionId(), 'jiying') // plan 来生瞳 → 疾影
+    await useGame.getState().setRoundAction(companionId(), 'liuguang') // plan 米拉 → 流光击
     await useTodos.getState().add({ title: '出击', priority: 'high' })
     await useTodos.getState().complete(useTodos.getState().todos[0].id) // executes the round
-    expect(texts()).toContain('疾影') // 来生瞳's skill, by name
-    expect(texts()).toContain('来生瞳')
+    expect(texts()).toContain('流光击') // 米拉's skill, by name
+    expect(texts()).toContain('米拉')
   })
 
   it('keeps the log bounded across many rounds', async () => {

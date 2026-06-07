@@ -17,7 +17,7 @@ interface CompanionLines {
   journal: Record<JournalTone, CannedLine[]>
 }
 
-const HITOMI: CompanionLines = {
+const MIRA: CompanionLines = {
   complete: {
     low: [
       { text: '搞定一件啦，节奏不错～', expression: 'smile' },
@@ -32,7 +32,7 @@ const HITOMI: CompanionLines = {
     high: [
       { text: '哇——这一击太狠了！我都看呆了！', expression: 'surprised' },
       { text: '这种硬骨头都啃下来了，你超强的！', expression: 'happy' },
-      { text: '完美收官！就是这种感觉，超带劲！', expression: 'determined' },
+      { text: '流星坠！就是这种感觉，超带劲！', expression: 'determined' },
     ],
   },
   worried: [
@@ -55,7 +55,7 @@ const HITOMI: CompanionLines = {
   },
 }
 
-const RUI: CompanionLines = {
+const VELA: CompanionLines = {
   complete: {
     low: [
       { text: '一步一个脚印，挺好。', expression: 'smile' },
@@ -90,7 +90,7 @@ const RUI: CompanionLines = {
   },
 }
 
-const AI: CompanionLines = {
+const NOVA: CompanionLines = {
   complete: {
     low: [
       { text: '叮！经验值到账～', expression: 'happy' },
@@ -126,9 +126,9 @@ const AI: CompanionLines = {
 }
 
 const LINES: Record<string, CompanionLines> = {
-  raisei_hitomi: HITOMI,
-  raisei_rui: RUI,
-  raisei_ai: AI,
+  mira: MIRA,
+  vela: VELA,
+  nova: NOVA,
 }
 
 const FALLBACK: CannedLine = { text: '完成！', expression: 'smile' }

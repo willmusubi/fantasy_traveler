@@ -30,11 +30,11 @@ describe('canned lines', () => {
     expect(selectFromPool([], 0, 'x')).toBe('x')
   })
   it('returns an in-character completion line with an expression', () => {
-    const line = pickCompletionLine('raisei_hitomi', 'high', 0)
+    const line = pickCompletionLine('mira', 'high', 0)
     expect(line.text).toBeTruthy()
     expect(line.expression).toBeTruthy()
   })
   it('returns a worried line', () => {
-    expect(pickWorriedLine('raisei_hitomi', 0).text).toBeTruthy()
+    expect(pickWorriedLine('mira', 0).text).toBeTruthy()
   })
 })

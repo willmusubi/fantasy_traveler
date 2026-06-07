@@ -1,18 +1,18 @@
 import { describe, expect, it } from 'vitest'
 import { renderWorldLore, storyChapterFor, WORLD_DEFS } from './worlds'
 
-const w = WORLD_DEFS.cats_eye
+const w = WORLD_DEFS.stargazers
 
-describe("Cat's Eye world (canon)", () => {
-  it('storyChapterFor picks the chapter for the next un-recruited sister', () => {
-    const c1 = storyChapterFor(w, ['raisei_hitomi'])
-    expect(c1.reward.unlockCompanionIds).toContain('raisei_rui')
+describe('观星会 world (canon)', () => {
+  it('storyChapterFor picks the chapter for the next un-recruited companion', () => {
+    const c1 = storyChapterFor(w, ['mira'])
+    expect(c1.reward.unlockCompanionIds).toContain('vela')
 
-    const c2 = storyChapterFor(w, ['raisei_hitomi', 'raisei_rui'])
-    expect(c2.reward.unlockCompanionIds).toContain('raisei_ai')
+    const c2 = storyChapterFor(w, ['mira', 'vela'])
+    expect(c2.reward.unlockCompanionIds).toContain('nova')
 
-    // All sisters recruited → finale chapter, no further recruit.
-    const c3 = storyChapterFor(w, ['raisei_hitomi', 'raisei_rui', 'raisei_ai'])
+    // All companions recruited → finale chapter, no further recruit.
+    const c3 = storyChapterFor(w, ['mira', 'vela', 'nova'])
     expect(c3.reward.unlockCompanionIds).toHaveLength(0)
   })
 
@@ -27,7 +27,7 @@ describe("Cat's Eye world (canon)", () => {
 
   it('renderWorldLore lists the real antagonists, not 心魔', () => {
     const lore = renderWorldLore(w)
-    expect(lore).toContain('卢卡') // a canon antagonist
+    expect(lore).toContain('惰怠之偶') // a canon antagonist
     expect(lore).toContain('真实对手')
     expect(lore).not.toContain('拖延心魔')
   })

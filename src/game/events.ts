@@ -6,6 +6,7 @@ import type { CalendarEvent, ID, JournalEntry, SkillId, Todo } from '../domain/t
 export type DomainEvent =
   | { type: 'TodoCompleted'; todo: Todo }
   | { type: 'TodoOverdue'; todo: Todo }
+  | { type: 'TaskTimerExpired'; todo: Todo }
   | { type: 'JournalWritten'; entry: JournalEntry }
   | { type: 'CalendarEventAttended'; event: CalendarEvent }
   | { type: 'FocusStreak'; days: number }

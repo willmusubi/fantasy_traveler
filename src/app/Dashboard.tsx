@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { selectPlayer, useGame } from '../state/gameStore'
+import { useTodos } from '../state/todoStore'
 import { BuffChoiceModal } from '../ui/BuffChoiceModal'
 import { ChatPanel } from '../ui/ChatPanel'
 import { CombatLog } from '../ui/CombatLog'
@@ -39,6 +40,14 @@ export function Dashboard() {
     g.setSteppingEnabled(zone === 'adventure')
     if (zone !== 'adventure' && g.gameState?.activeRound) void g.autoResolveRound()
   }, [zone])
+
+  // One shared heartbeat for ALL armed todo countdowns: fire any that just expired in real time
+  // (no waiting for the boot/focus sweep). A single interval, not per-row; sweepTimers early-returns
+  // when nothing is armed. The live MM:SS digits are re-rendered by each armed row itself.
+  useEffect(() => {
+    const h = window.setInterval(() => void useTodos.getState().sweepTimers(), 1000)
+    return () => window.clearInterval(h)
+  }, [])
 
   return (
     <div className="app">
