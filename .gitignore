@@ -1,0 +1,30 @@
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea
+
+# Logs
+logs
+*.log
+npm-debug.log*
+
+# Env / secrets (API key lives in browser localStorage, never committed)
+.env
+.env.*
+!.env.example
+
+# Test / coverage
+coverage
+.gstack/
+
+# TypeScript incremental build cache
+*.tsbuildinfo
+
+# Claude Code local settings (machine-local permission grants, not shared)
+.claude/settings.local.json

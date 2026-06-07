@@ -1,0 +1,22 @@
+import { chromium } from 'playwright'
+const URL = 'http://localhost:5173/'
+const b = await chromium.launch({ headless: true, proxy: { server: 'http://127.0.0.1:7890', bypass: 'localhost,127.0.0.1,::1,[::1]' } })
+const ctx = await b.newContext({ viewport: { width: 1280, height: 900 }, locale: 'zh-CN' })
+const p = await ctx.newPage()
+const consoleErrs = [], pageErrs = []
+p.on('console', (m) => { if (m.type() === 'error') consoleErrs.push(m.text()) })
+p.on('pageerror', (e) => pageErrs.push(e.message))
+await p.goto(URL, { waitUntil: 'domcontentloaded' })
+await p.evaluate(async () => { try { localStorage.clear() } catch {}; const ds = (await indexedDB.databases?.()) || [{ name: 'fantasy-traveler' }]; await Promise.all(ds.map((d) => new Promise((r) => { const q = indexedDB.deleteDatabase(d.name); q.onsuccess = q.onerror = q.onblocked = () => r() }))) })
+await p.reload({ waitUntil: 'networkidle' })
+await p.waitForSelector('.modal')
+await p.fill('input[placeholder="旅人"]', '阿旅')
+await p.locator('.modal-actions button', { hasText: '开始冒险' }).click()
+await p.waitForSelector('.companion-card')
+await p.waitForTimeout(400)
+const img = await p.locator('.portrait-img').count()
+const emoji = await p.locator('.portrait-emoji').count()
+console.log('portrait-img:', img, ' portrait-emoji:', emoji)
+console.log('console errors:', consoleErrs.length, consoleErrs.slice(0,3))
+console.log('page errors:', pageErrs.length)
+await b.close()

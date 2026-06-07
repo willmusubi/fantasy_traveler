@@ -1,0 +1,22 @@
+import { chromium } from 'playwright'
+const URL = 'http://localhost:5173/'
+const b = await chromium.launch({ headless: true, proxy: { server: 'http://127.0.0.1:7890', bypass: 'localhost,127.0.0.1,::1,[::1]' } })
+const ctx = await b.newContext({ viewport: { width: 1280, height: 880 }, locale: 'zh-CN' })
+const p = await ctx.newPage()
+await p.goto(URL, { waitUntil: 'domcontentloaded' })
+await p.evaluate(async () => { try { localStorage.clear() } catch {} ; const ds = (await indexedDB.databases?.()) || [{ name: 'fantasy-traveler' }]; await Promise.all(ds.map((d) => new Promise((r) => { const q = indexedDB.deleteDatabase(d.name); q.onsuccess = q.onerror = q.onblocked = () => r() }))) })
+await p.reload({ waitUntil: 'networkidle' })
+await p.evaluate(() => document.fonts.ready).catch(() => {})
+await p.waitForSelector('.modal')
+await p.fill('input[placeholder="旅人"]', '测试旅人')
+await p.locator('.modal-actions button', { hasText: '开始冒险' }).click()
+await p.waitForSelector('.todo-add')
+const add = async (t, pr) => { await p.fill('.todo-add input[placeholder*="要完成"]', t); await p.selectOption('.todo-add select', pr); await p.locator('.todo-add button', { hasText: '添加' }).click() }
+await add('打败拖延心魔', 'high'); await add('写晨间计划', 'high')
+await p.locator('.todo-check:not([disabled])').first().click()
+await p.waitForTimeout(700)
+await p.evaluate(() => window.scrollTo(0, 0))
+await p.waitForTimeout(400)
+await p.locator('.battle-stage').screenshot({ path: '/tmp/ftqa/stage-closeup.png' })
+console.log('done')
+await b.close()
