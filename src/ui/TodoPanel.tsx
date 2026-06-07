@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { isOverdue } from '../domain/dates'
 import type { Priority, Todo } from '../domain/types'
-import { byOrder, useTodos } from '../state/todoStore'
+import { partitionTodayTodos, useTodos } from '../state/todoStore'
 
 const PRIORITY_PIPS: Record<Priority, number> = { low: 1, med: 2, high: 3 }
 const PRIORITY_LABEL: Record<Priority, string> = { low: '低', med: '中', high: '高' }
@@ -154,6 +154,7 @@ export function TodoPanel() {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [dragId, setDragId] = useState<string | null>(null)
   const [overId, setOverId] = useState<string | null>(null)
+  const [doneOpen, setDoneOpen] = useState(true)
   const now = new Date()
 
   const submit = (e: React.FormEvent) => {
@@ -164,16 +165,16 @@ export function TodoPanel() {
     setDue('')
   }
 
-  const open = todos.filter((t) => t.status === 'open').sort(byOrder)
-  const done = todos.filter((t) => t.status === 'done').sort(byOrder)
+  const { overdue, todayOpen, doneToday } = partitionTodayTodos(todos, now)
+  const openCount = overdue.length + todayOpen.length
 
-  // Drag-reorder (open list only). Insert the dragged row before the drop target.
+  // Drag-reorder (今日 group only). Insert the dragged row before the drop target.
   const drop = (targetId: string) => {
     const from = dragId
     setDragId(null)
     setOverId(null)
     if (!from || from === targetId) return
-    const ids = open.map((t) => t.id).filter((x) => x !== from)
+    const ids = todayOpen.map((t) => t.id).filter((x) => x !== from)
     const at = ids.indexOf(targetId)
     ids.splice(at < 0 ? ids.length : at, 0, from)
     void reorder(ids)
@@ -202,12 +203,19 @@ export function TodoPanel() {
     },
   })
 
+  const renderRow = (t: Todo, drag?: DragProps) =>
+    editingId === t.id ? (
+      <TodoEditRow key={t.id} todo={t} onClose={() => setEditingId(null)} />
+    ) : (
+      <TodoRow key={t.id} todo={t} now={now} onEdit={() => setEditingId(t.id)} drag={drag} />
+    )
+
   return (
     <div className="panel">
       <div className="panel-title">
         <span>今日待办</span>
         <span style={{ color: 'var(--muted)', fontSize: 11 }}>
-          {open.length} 待办 · {done.length} 完成
+          {openCount} 待办 · {doneToday.length} 完成
         </span>
       </div>
       <form className="todo-add" onSubmit={submit}>
@@ -239,26 +247,29 @@ export function TodoPanel() {
         {todos.length === 0 && (
           <div className="todo-empty">还没有待办。添加第一件事，和瞳一起出发吧！</div>
         )}
-        {open.map((t) =>
-          editingId === t.id ? (
-            <TodoEditRow key={t.id} todo={t} onClose={() => setEditingId(null)} />
-          ) : (
-            <TodoRow
-              key={t.id}
-              todo={t}
-              now={now}
-              onEdit={() => setEditingId(t.id)}
-              drag={dragPropsFor(t.id)}
-            />
-          ),
+        {todos.length > 0 && openCount === 0 && (
+          <div className="todo-empty">今天的事都安排好啦 ✓（未来的任务在日历里查看）</div>
         )}
-        {done.map((t) =>
-          editingId === t.id ? (
-            <TodoEditRow key={t.id} todo={t} onClose={() => setEditingId(null)} />
-          ) : (
-            <TodoRow key={t.id} todo={t} now={now} onEdit={() => setEditingId(t.id)} />
-          ),
+
+        {overdue.length > 0 && (
+          <div className="todo-group-head overdue">⚠ 逾期 ({overdue.length})</div>
         )}
+        {overdue.map((t) => renderRow(t))}
+
+        {todayOpen.length > 0 && <div className="todo-group-head">今日 ({todayOpen.length})</div>}
+        {todayOpen.map((t) => renderRow(t, dragPropsFor(t.id)))}
+
+        {doneToday.length > 0 && (
+          <button
+            type="button"
+            className="todo-group-head done-head"
+            onClick={() => setDoneOpen((v) => !v)}
+            aria-expanded={doneOpen}
+          >
+            ✓ 今日完成 ({doneToday.length}) <span className="caret">{doneOpen ? '▾' : '▸'}</span>
+          </button>
+        )}
+        {doneOpen && doneToday.map((t) => renderRow(t))}
       </div>
     </div>
   )

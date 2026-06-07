@@ -8,7 +8,7 @@ import { todosRepo } from '../data/repositories'
 import type { Todo } from '../domain/types'
 import { useGame } from '../state/gameStore'
 import { useQuest } from '../state/questStore'
-import { useTodos } from '../state/todoStore'
+import { partitionTodayTodos, useTodos } from '../state/todoStore'
 
 beforeEach(async () => {
   await closeDb()
@@ -104,5 +104,51 @@ describe('todo store — un-check / edit / reorder', () => {
     await useTodos.getState().add({ title: '新任务', priority: 'med' })
     const fresh = useTodos.getState().todos.find((t) => t.title === '新任务')!
     expect(fresh.order!).toBeGreaterThan(got.order!) // appended after
+  })
+})
+
+describe('partitionTodayTodos — 今日待办 panel buckets', () => {
+  const now = new Date(2026, 5, 7, 15, 0, 0) // 2026-06-07 15:00 local
+
+  const mk = (over: Partial<Todo> & { id: string }): Todo => ({
+    title: over.id,
+    priority: 'med',
+    status: 'open',
+    tags: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...over,
+  })
+
+  it('splits into overdue / today / hidden-future and keeps only today-completed', () => {
+    const todos: Todo[] = [
+      mk({ id: 'overdue-04', due: '2026-06-04' }),
+      mk({ id: 'overdue-01', due: '2026-06-01' }),
+      mk({ id: 'today-due', due: '2026-06-07', order: 2 }),
+      mk({ id: 'no-due', order: 1 }),
+      mk({ id: 'future', due: '2026-06-10' }),
+      mk({ id: 'done-today', status: 'done', completedAt: '2026-06-07T10:00:00' }),
+      mk({ id: 'done-yesterday', status: 'done', completedAt: '2026-06-06T10:00:00' }),
+    ]
+
+    const { overdue, todayOpen, doneToday } = partitionTodayTodos(todos, now)
+
+    // Overdue: only past-due open todos, most-overdue first.
+    expect(overdue.map((t) => t.id)).toEqual(['overdue-01', 'overdue-04'])
+    // Today: due-today (not yet overdue) + no-due, in manual order.
+    expect(todayOpen.map((t) => t.id)).toEqual(['no-due', 'today-due'])
+    // Done: only today's completions.
+    expect(doneToday.map((t) => t.id)).toEqual(['done-today'])
+
+    // Future-dated open todo is hidden from every bucket.
+    const shown = [...overdue, ...todayOpen, ...doneToday].map((t) => t.id)
+    expect(shown).not.toContain('future')
+  })
+
+  it('a date-only todo due today is not overdue until local midnight', () => {
+    const todos: Todo[] = [mk({ id: 'due-today', due: '2026-06-07' })]
+    const lateToday = new Date(2026, 5, 7, 23, 59, 0)
+    const { overdue, todayOpen } = partitionTodayTodos(todos, lateToday)
+    expect(overdue).toHaveLength(0)
+    expect(todayOpen.map((t) => t.id)).toEqual(['due-today'])
   })
 })

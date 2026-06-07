@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { pickCompletionLine, pickWorriedLine } from '../companion/cannedLines'
 import { todosRepo } from '../data/repositories'
-import { isOverdue, localDateKey } from '../domain/dates'
+import { dueDateKey, dueDeadline, isOverdue, localDateKey } from '../domain/dates'
 import type { Priority, Todo } from '../domain/types'
 import { dispatchEvent } from '../game/pipeline'
 import { selectPartyCompanions, useGame } from './gameStore'
@@ -56,6 +56,29 @@ function backfillOrder(todos: Todo[]): { todos: Todo[]; changed: Todo[] } {
 /** Sort comparator: manual order asc, then createdAt asc as a stable tiebreaker. */
 export function byOrder(a: Todo, b: Todo): number {
   return (a.order ?? 0) - (b.order ?? 0) || a.createdAt.localeCompare(b.createdAt)
+}
+
+/**
+ * Split the list into the three buckets the "今日待办" panel shows:
+ *  - overdue:   open todos past their deadline, most-overdue first
+ *  - todayOpen: open todos due today OR with no due date, in manual order (drag-sortable)
+ *  - doneToday: todos completed today (by local `completedAt`)
+ * Future-dated open todos fall through all three buckets → hidden from the panel
+ * (they still surface in the calendar on their due day).
+ */
+export function partitionTodayTodos(todos: Todo[], now: Date) {
+  const today = localDateKey(now)
+  const open = todos.filter((t) => t.status === 'open')
+  const overdue = open
+    .filter((t) => isOverdue(t.due, now))
+    .sort((a, b) => dueDeadline(a.due!).getTime() - dueDeadline(b.due!).getTime())
+  const todayOpen = open
+    .filter((t) => !isOverdue(t.due, now) && (!t.due || dueDateKey(t.due) === today))
+    .sort(byOrder)
+  const doneToday = todos
+    .filter((t) => t.status === 'done' && t.completedAt && localDateKey(t.completedAt) === today)
+    .sort((a, b) => (a.completedAt! < b.completedAt! ? 1 : -1))
+  return { overdue, todayOpen, doneToday }
 }
 
 export const useTodos = create<TodoStore>((set, get) => ({
