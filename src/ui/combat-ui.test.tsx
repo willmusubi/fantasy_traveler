@@ -22,7 +22,7 @@ beforeEach(async () => {
     const req = indexedDB.deleteDatabase('fantasy-traveler')
     req.onsuccess = req.onerror = req.onblocked = () => resolve()
   })
-  useGame.setState({ gameState: null, characters: [], affinities: {}, reaction: null, toasts: [], lastDamage: null, activeQuest: null, recruitedId: null, ready: false })
+  useGame.setState({ gameState: null, characters: [], affinities: {}, reaction: null, toasts: [], lastDamageByEnemy: {}, activeQuest: null, recruitedId: null, ready: false })
   useTodos.setState({ todos: [], loaded: false, completionCount: 0 })
   useQuest.setState({ status: 'idle', error: null, usedFallback: false })
 })

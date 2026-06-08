@@ -1,6 +1,7 @@
 // Per-companion canned reaction pools — NO LLM call. This is the high-frequency
 // felt reward on todo completion (§21 "the loop fix"). Selection is pure + testable.
 
+import { LOCAL_PACK } from '../content/localPack'
 import type { ExpressionKey, Mood, Priority } from '../domain/types'
 
 export interface CannedLine {
@@ -11,7 +12,7 @@ export interface CannedLine {
 /** Coarse emotional tone a journal entry evokes in a companion (§21 mood flags). */
 export type JournalTone = 'proud' | 'concerned' | 'neutral'
 
-interface CompanionLines {
+export interface CompanionLines {
   complete: Record<Priority, CannedLine[]>
   worried: CannedLine[]
   journal: Record<JournalTone, CannedLine[]>
@@ -125,11 +126,14 @@ const NOVA: CompanionLines = {
   },
 }
 
-const LINES: Record<string, CompanionLines> = {
+const DEFAULT_LINES: Record<string, CompanionLines> = {
   mira: MIRA,
   vela: VELA,
   nova: NOVA,
 }
+
+// A local content pack may supply its own per-companion pools (keyed by its companion ids).
+const LINES: Record<string, CompanionLines> = LOCAL_PACK?.cannedLines ?? DEFAULT_LINES
 
 const FALLBACK: CannedLine = { text: '完成！', expression: 'smile' }
 

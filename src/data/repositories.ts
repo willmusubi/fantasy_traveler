@@ -95,6 +95,19 @@ export const affinityRepo = {
  *  renderers that assume the fields exist (e.g. PartyPanel's unlockedCompanionIds). */
 export function withGameStateDefaults(s: GameState): GameState {
   const player = s.partyIds[0]
+  // `enemies` is the new source of truth; synthesize from a legacy singular `monster` if absent.
+  // (spd is backfilled for pre-speed saves — default = MONSTER_BASE_SPD; new spawns set it.)
+  const legacyMonster = s.monster ? { ...s.monster, spd: s.monster.spd ?? 9 } : undefined
+  const enemies =
+    s.enemies && s.enemies.length > 0
+      ? s.enemies.map((m) => ({ ...m, spd: m.spd ?? 9 }))
+      : legacyMonster
+        ? [legacyMonster]
+        : []
+  // A round snapshotted under the OLD shape (has enemyAtStart, no enemiesAtStart) cannot resume
+  // safely against the multi-enemy resolver — clear it (a refresh mid-round just restarts the task).
+  const ar = s.activeRound
+  const staleRound = ar != null && (ar as { enemiesAtStart?: unknown }).enemiesAtStart === undefined
   return {
     ...s,
     encounterIndex: s.encounterIndex ?? 0,
@@ -106,8 +119,9 @@ export function withGameStateDefaults(s: GameState): GameState {
     combatLog: s.combatLog ?? [],
     charge: s.charge ?? {}, // persistent CTB gauges; missing entry = 0
     roundPlan: s.roundPlan ?? {}, // per-member planned action; missing entry = basic attack
-    // Backfill enemy speed for pre-speed saves (default = MONSTER_BASE_SPD); new spawns set it.
-    monster: { ...s.monster, spd: s.monster.spd ?? 9 },
+    enemies,
+    monster: undefined, // collapse the legacy field so nothing reads it post-migration
+    activeRound: staleRound ? undefined : ar,
   }
 }
 

@@ -2,6 +2,7 @@
 // stats at combat time (see src/game/effectiveStats.ts) — never written onto a
 // character's base stats. (§22)
 
+import { LOCAL_PACK } from '../content/localPack'
 import type { Stats, WorldId } from '../domain/types'
 
 export type EquipSlot = 'weapon' | 'armor' | 'trinket'
@@ -17,7 +18,7 @@ export interface EquipmentDef {
   price?: number
 }
 
-export const EQUIPMENT_DEFS: Record<string, EquipmentDef> = {
+const DEFAULT_EQUIPMENT_DEFS: Record<string, EquipmentDef> = {
   practice_dagger: {
     id: 'practice_dagger', nameKey: 'equip.practice_dagger', slot: 'weapon',
     bonus: { atk: 2 }, price: 30,
@@ -52,6 +53,9 @@ export const EQUIPMENT_DEFS: Record<string, EquipmentDef> = {
     bonus: { maxHp: 24, mag: 4 }, // a recovered star-chart — inspiration
   },
 }
+
+/** The active equipment catalog — a local content pack (gitignored) overrides the shipped sample. */
+export const EQUIPMENT_DEFS: Record<string, EquipmentDef> = LOCAL_PACK?.equipment ?? DEFAULT_EQUIPMENT_DEFS
 
 /** Equipment available in a given world (world-scoped + world-agnostic items). */
 export function getWorldEquipment(worldId: WorldId): Record<string, EquipmentDef> {

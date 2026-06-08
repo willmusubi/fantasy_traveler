@@ -2,6 +2,7 @@
 // 羁绊网 UI; synergies are the combat-affecting subset, active when ALL `requires`
 // members are in the active party. (§22)
 
+import { LOCAL_PACK } from '../content/localPack'
 import type { WorldId } from '../domain/types'
 
 export interface RelationshipEdge {
@@ -28,13 +29,16 @@ export interface SynergyDef {
   labelKey: string
 }
 
-export const RELATIONSHIP_EDGES: RelationshipEdge[] = [
+const DEFAULT_RELATIONSHIP_EDGES: RelationshipEdge[] = [
   { members: ['mira', 'vela'], worldId: 'stargazers', kind: 'ally', labelKey: 'rel.allies' },
   { members: ['mira', 'nova'], worldId: 'stargazers', kind: 'ally', labelKey: 'rel.allies' },
   { members: ['vela', 'nova'], worldId: 'stargazers', kind: 'ally', labelKey: 'rel.allies' },
 ]
 
-export const SYNERGY_DEFS: SynergyDef[] = [
+/** The active relationship graph — a local content pack (gitignored) overrides the shipped sample. */
+export const RELATIONSHIP_EDGES: RelationshipEdge[] = LOCAL_PACK?.relationshipEdges ?? DEFAULT_RELATIONSHIP_EDGES
+
+const DEFAULT_SYNERGY_DEFS: SynergyDef[] = [
   // Full trio — the headline synergy.
   {
     id: 'stargazers_trio', worldId: 'stargazers',
@@ -58,6 +62,9 @@ export const SYNERGY_DEFS: SynergyDef[] = [
     bonus: { defPct: 0.1 }, labelKey: 'synergy.pair',
   },
 ]
+
+/** The active party synergies — a local content pack (gitignored) overrides the shipped sample. */
+export const SYNERGY_DEFS: SynergyDef[] = LOCAL_PACK?.synergyDefs ?? DEFAULT_SYNERGY_DEFS
 
 /** Synergies active for a given set of party companion ids. */
 export function activeSynergiesFor(partyCompanionIds: string[]): SynergyDef[] {

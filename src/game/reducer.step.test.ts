@@ -26,7 +26,7 @@ function makeMonster(over: Partial<Monster> = {}): Monster {
 
 function makeInput(gsOver: Partial<GameState> = {}): ReducerInput {
   const gameState: GameState = {
-    partyIds: ['player', 'mira'], monster: makeMonster(), storyStage: 0, buffs: [], moodFlags: {},
+    partyIds: ['player', 'mira'], enemies: [makeMonster()], storyStage: 0, buffs: [], moodFlags: {},
     lastResolvedAt: '', encounterIndex: 0, unlockedCompanionIds: ['mira'], ownedEquipment: [],
     resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {}, ...gsOver,
   }
@@ -79,7 +79,7 @@ describe('interactive round parity with the synchronous path', () => {
     assertParity({ roundPlan: { mira: 'juxing' } }, 'high')
   })
   it('matches on a victory + respawn', () => {
-    assertParity({ monster: makeMonster({ hp: 50 }) }, 'high')
+    assertParity({ enemies: [makeMonster({ hp: 50 })] }, 'high')
   })
   it('matches with an active atk buff (mult + decay)', () => {
     assertParity({ partyBuffs: [{ id: 'b', kind: 'atkPct', magnitude: 0.2, turnsLeft: 2 }] }, 'high')

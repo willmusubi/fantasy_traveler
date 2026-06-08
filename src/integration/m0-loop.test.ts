@@ -18,7 +18,7 @@ beforeEach(async () => {
     const req = indexedDB.deleteDatabase('fantasy-traveler')
     req.onsuccess = req.onerror = req.onblocked = () => resolve()
   })
-  useGame.setState({ gameState: null, characters: [], affinities: {}, reaction: null, toasts: [], lastDamage: null, activeQuest: null, recruitedId: null, ready: false })
+  useGame.setState({ gameState: null, characters: [], affinities: {}, reaction: null, toasts: [], lastDamageByEnemy: {}, activeQuest: null, recruitedId: null, ready: false })
   useTodos.setState({ todos: [], loaded: false, completionCount: 0 })
   useQuest.setState({ status: 'idle', error: null, usedFallback: false })
 })
@@ -29,7 +29,7 @@ describe('M0 end-to-end loop', () => {
     await useGame.getState().seedNewGame('测试旅人', 'vanguard')
     const g0 = useGame.getState()
     expect(g0.gameState).toBeTruthy()
-    const startHp = g0.gameState!.monster.maxHp // 900 at stage 0, 0 open-high
+    const startHp = g0.gameState!.enemies[0].maxHp // 900 at stage 0, 0 open-high
     expect(startHp).toBe(900)
     const companionId = g0.characters.find((c) => c.kind === 'companion')!.id
     expect(g0.affinities[companionId].points).toBe(90) // demo seed
@@ -45,8 +45,8 @@ describe('M0 end-to-end loop', () => {
 
     // Persistent CTB: each completion lands ~the party's worth of hits and the enemy interjects
     // once charged; exact totals shift as gauges carry, so assert it was hit hard but not felled.
-    expect(g.gameState!.monster.hp).toBeGreaterThan(0)
-    expect(g.gameState!.monster.hp).toBeLessThan(startHp - 100)
+    expect(g.gameState!.enemies[0].hp).toBeGreaterThan(0)
+    expect(g.gameState!.enemies[0].hp).toBeLessThan(startHp - 100)
 
     // Affinity 90 → 95 → 100 = rank B, with a rank-up toast.
     expect(g.affinities[companionId].points).toBe(100)
@@ -86,20 +86,20 @@ describe('M0 end-to-end loop', () => {
   it('overdue sweep grows the monster and sets a worried mood (once per day)', async () => {
     await useGame.getState().seedNewGame('测试', 'vanguard')
     const companionId = useGame.getState().characters.find((c) => c.kind === 'companion')!.id
-    const maxHp0 = useGame.getState().gameState!.monster.maxHp
+    const maxHp0 = useGame.getState().gameState!.enemies[0].maxHp
 
     // An overdue open todo (due yesterday).
     const yesterday = new Date(Date.now() - 36 * 3600 * 1000).toISOString().slice(0, 10)
     await useTodos.getState().add({ title: '逾期任务', priority: 'high', due: yesterday })
 
     await useTodos.getState().sweepOverdue()
-    expect(useGame.getState().gameState!.monster.maxHp).toBeGreaterThan(maxHp0)
+    expect(useGame.getState().gameState!.enemies[0].maxHp).toBeGreaterThan(maxHp0)
     expect(useGame.getState().gameState!.moodFlags[companionId]).toBe('worried')
 
     // Second sweep same day is a no-op (lastOverdueOn guard).
-    const hpAfterFirst = useGame.getState().gameState!.monster.maxHp
+    const hpAfterFirst = useGame.getState().gameState!.enemies[0].maxHp
     await useTodos.getState().sweepOverdue()
-    expect(useGame.getState().gameState!.monster.maxHp).toBe(hpAfterFirst)
+    expect(useGame.getState().gameState!.enemies[0].maxHp).toBe(hpAfterFirst)
   })
 
   it('backfills §22 fields on a pre-v2 save (withDefaults)', async () => {
@@ -118,7 +118,7 @@ describe('M0 end-to-end loop', () => {
     expect(loaded?.encounterIndex).toBe(0)
     expect(loaded?.unlockedCompanionIds).toEqual(['c1']) // companions in partyIds minus player
     expect(loaded?.ownedEquipment).toEqual([])
-    expect(loaded?.monster.spd).toBe(9) // enemy speed backfilled for a pre-speed save
+    expect(loaded?.enemies[0].spd).toBe(9) // enemy speed backfilled (synthesized from a legacy monster)
     expect(loaded?.storyStage).toBe(2) // existing data preserved
   })
 
@@ -127,7 +127,7 @@ describe('M0 end-to-end loop', () => {
     // No API key in tests → buildAndGenerateQuest falls back to the authored quest.
     await useQuest.getState().startQuest('stargazers')
     expect(useGame.getState().gameState!.activeQuestId).toBeTruthy()
-    expect(useGame.getState().gameState!.monster.displayName).toBeTruthy() // encounter enemy
+    expect(useGame.getState().gameState!.enemies[0].displayName).toBeTruthy() // encounter enemy
 
     // Hammer the quest with high-priority completions until it finishes.
     let guard = 0

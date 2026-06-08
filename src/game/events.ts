@@ -13,7 +13,7 @@ export type DomainEvent =
   | { type: 'DialogueInteraction'; characterId: ID }
   // Interactive (FF-style) combat round, driven by the RoundResolver overlay.
   | { type: 'RoundBegan'; todo: Todo }
-  | { type: 'RoundAdvanced'; choice?: SkillId | 'basic'; auto?: boolean }
+  | { type: 'RoundAdvanced'; choice?: SkillId | 'basic'; auto?: boolean; targetId?: ID }
 
 export type DomainEventType = DomainEvent['type']
 

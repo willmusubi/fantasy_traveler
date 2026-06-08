@@ -55,7 +55,11 @@ interface GameStore {
   affinities: Record<string, Affinity>
   reaction: Reaction | null
   toasts: Toast[]
-  lastDamage: { amount: number; key: number } | null
+  /** Per-enemy floating damage: enemyId → latest {amount,key}. Keyed so each card re-animates. */
+  lastDamageByEnemy: Record<ID, { amount: number; key: number }>
+  /** Transient (NOT persisted) target the player picked for the current step-through turn. The
+   *  step-through picker + enemy cards read/write it; passed to advanceRound for single-target acts. */
+  combatTargetId: ID | null
   activeQuest: Quest | null
   /** Set by ingestResult when a quest is completed/recruit happens, for the UI to show. */
   recruitedId: string | null
@@ -89,11 +93,14 @@ interface GameStore {
   setSteppingEnabled: (on: boolean) => void
   /** Begin an interactive round for a just-completed (already marked done) todo. */
   beginInteractiveRound: (todo: Todo) => Promise<void>
-  /** Resolve the paused ally's turn with `choice` (a SkillId or 'basic'), then auto-run enemy/lap
-   *  turns to the next decision or finalize. */
-  advanceRound: (choice?: SkillId | 'basic') => Promise<void>
+  /** Resolve the paused ally's turn with `choice` (a SkillId or 'basic') against `targetId` (the
+   *  chosen enemy; omit for AoE / to auto-target), then auto-run enemy/lap turns to the next
+   *  decision or finalize. */
+  advanceRound: (choice?: SkillId | 'basic', targetId?: ID) => Promise<void>
   /** Resolve all remaining turns of the active round using each member's roundPlan default. */
   autoResolveRound: () => Promise<void>
+  /** Set (or clear) the transient step-through target the player picked. */
+  setCombatTarget: (id: ID | null) => void
   // Worldview management (§22)
   setParty: (companionIds: ID[]) => Promise<void>
   /** Switch the active world (the story IP). Disallowed mid-quest. */
@@ -165,7 +172,8 @@ export const useGame = create<GameStore>((set, get) => ({
   affinities: {},
   reaction: null,
   toasts: [],
-  lastDamage: null,
+  lastDamageByEnemy: {},
+  combatTargetId: null,
   activeQuest: null,
   recruitedId: null,
   victorySummary: null,
@@ -201,10 +209,10 @@ export const useGame = create<GameStore>((set, get) => ({
       dailyGainedOn: today,
     }
 
-    const monster = spawnMonster(0, 0, () => crypto.randomUUID())
+    const enemies = [spawnMonster(0, 0, () => crypto.randomUUID())]
     const gameState: GameState = {
       partyIds: [player.id, companion.id],
-      monster,
+      enemies,
       storyStage: 0,
       buffs: [],
       moodFlags: {},
@@ -249,7 +257,7 @@ export const useGame = create<GameStore>((set, get) => ({
 
     const toasts: Toast[] = []
     let affinityDelta = 0
-    let damageAmount = 0
+    const dmgByEnemy: Record<string, number> = {}
     let recruitedId: string | null = null
     // Settlement accumulators.
     let victoryXp = 0
@@ -263,7 +271,7 @@ export const useGame = create<GameStore>((set, get) => ({
 
     for (const e of result.effects) {
       if (e.type === 'damage') {
-        damageAmount += e.amount
+        dmgByEnemy[e.targetId] = (dmgByEnemy[e.targetId] ?? 0) + e.amount
       } else if (e.type === 'affinity') {
         affinityDelta += e.amount
         if (e.rankedUpTo) {
@@ -312,7 +320,10 @@ export const useGame = create<GameStore>((set, get) => ({
 
     let victorySummary = prev.victorySummary
     if (isDefeat) {
-      const enemy = prev.gameState ? prev.gameState.monster.displayName ?? t(prev.gameState.monster.nameKey) : '敌人'
+      const team = prev.gameState?.enemies ?? []
+      const lead = team[0]
+      const leadName = lead ? (lead.displayName ?? t(lead.nameKey)) : '敌人'
+      const enemy = team.length > 1 ? `${leadName} 等` : leadName
       victorySummary = {
         key: ++reactionKey,
         enemy,
@@ -338,7 +349,9 @@ export const useGame = create<GameStore>((set, get) => ({
       recruitedId: recruitedId ?? prev.recruitedId,
       victorySummary,
       toasts: [...prev.toasts, ...toasts],
-      lastDamage: damageAmount > 0 ? { amount: damageAmount, key: ++reactionKey } : prev.lastDamage,
+      lastDamageByEnemy: Object.keys(dmgByEnemy).length
+        ? { ...prev.lastDamageByEnemy, ...Object.fromEntries(Object.entries(dmgByEnemy).map(([id, a]) => [id, { amount: a, key: ++reactionKey }])) }
+        : prev.lastDamageByEnemy,
     })
     return { affinityDelta }
   },
@@ -433,12 +446,16 @@ export const useGame = create<GameStore>((set, get) => ({
     await onRoundResolved(result, todo.priority) // no living ally to decide → finalized at begin
   },
 
-  async advanceRound(choice) {
+  async advanceRound(choice, targetId) {
     const before = get().gameState?.activeRound
     if (!before) return
-    const result = await dispatchEvent({ type: 'RoundAdvanced', choice })
+    const result = await dispatchEvent({ type: 'RoundAdvanced', choice, targetId })
     get().ingestResult(result)
     await onRoundResolved(result, before.priority)
+  },
+
+  setCombatTarget(id) {
+    set({ combatTargetId: id })
   },
 
   async autoResolveRound() {

@@ -12,8 +12,8 @@ import type { GameEffect } from './reducer'
 
 export interface LogContext {
   characters: Character[]
-  /** The enemy fought this round (the monster at the start of the dispatch). */
-  enemy: Monster
+  /** The enemy TEAM fought this round (snapshot at the start of the round/dispatch). */
+  enemies: Monster[]
   source: DomainEvent['type']
   /** gold gained this round (result.gold − prev gold). */
   goldDelta: number
@@ -24,7 +24,14 @@ export interface LogContext {
 export function buildLogEntry(effects: GameEffect[], ctx: LogContext): CombatLogEntry | null {
   const nameOf = (id: ID): string =>
     ctx.characters.find((c) => c.id === id)?.name ?? COMPANION_DEFS[id]?.name ?? '伙伴'
-  const enemyName = ctx.enemy.displayName ?? t(ctx.enemy.nameKey)
+  const enemyNameById = (id: ID): string => {
+    const m = ctx.enemies.find((e) => e.id === id)
+    return m ? (m.displayName ?? t(m.nameKey)) : '敌人'
+  }
+  const primary = ctx.enemies[0]
+  const primaryName = primary ? (primary.displayName ?? t(primary.nameKey)) : '敌方'
+  // The round's team label: primary name + 「等」 when there are escorts, else the single name.
+  const teamLabel = ctx.enemies.length > 1 ? `${primaryName} 等` : primaryName
   const skillName = (id: ID): string => t(SKILL_DEFS[id]?.nameKey ?? id)
 
   const lines: CombatLogLine[] = []
@@ -36,22 +43,22 @@ export function buildLogEntry(effects: GameEffect[], ctx: LogContext): CombatLog
       case 'skillCast': {
         const caster = nameOf(e.casterId)
         const sk = skillName(e.skillId)
-        if (e.skillKind === 'attack') lines.push({ icon: '✦', text: `${caster} 施放「${sk}」→ ${enemyName}  -${e.amount}${e.monsterHpAfter != null ? `（剩 ${e.monsterHpAfter}）` : ''}`, tone: 'good' })
+        if (e.skillKind === 'attack') lines.push({ icon: '✦', text: `${caster} 施放「${sk}」→ ${e.targetId ? enemyNameById(e.targetId) : '全体敌人'}  -${e.amount}${e.monsterHpAfter != null ? `（剩 ${e.monsterHpAfter}）` : ''}`, tone: 'good' })
         else if (e.skillKind === 'heal') lines.push({ icon: '✦', text: `${caster} 施放「${sk}」，恢复 ${e.amount} HP`, tone: 'good' })
         else if (e.skillKind === 'buff') lines.push({ icon: '✦', text: `${caster} 施放「${sk}」，全队攻击 +${e.amount}%`, tone: 'good' })
-        else lines.push({ icon: '✦', text: `${caster} 施放「${sk}」，${enemyName} 防御 -${e.amount}%`, tone: 'good' })
+        else lines.push({ icon: '✦', text: `${caster} 施放「${sk}」，敌方防御 -${e.amount}%`, tone: 'good' })
         break
       }
       case 'damage':
         // One line per individual basic-attack hit (the speed-ordered round), naming who struck.
         // A planned skill's damage is tagged `fromSkill` — its paired skillCast line covers it.
-        if (!e.fromSkill) lines.push({ icon: '⚔', text: `${nameOf(e.actorId)} → ${enemyName}  -${e.amount}（剩 ${e.monsterHpAfter}）`, tone: 'good' })
+        if (!e.fromSkill) lines.push({ icon: '⚔', text: `${nameOf(e.actorId)} → ${enemyNameById(e.targetId)}  -${e.amount}（剩 ${e.monsterHpAfter}）`, tone: 'good' })
         break
       case 'enemyAttack':
-        lines.push({ icon: '💥', text: `${enemyName} 进攻 ${nameOf(e.targetId)}  -${e.amount}`, tone: 'bad' })
+        lines.push({ icon: '💥', text: `${teamLabel} 进攻 ${nameOf(e.targetId)}  -${e.amount}`, tone: 'bad' })
         break
       case 'monsterGrew':
-        lines.push({ icon: '⚠', text: `拖延让 ${enemyName} 更强了（HP +${e.hpDelta}，攻击 +${e.atkDelta}）`, tone: 'bad' })
+        lines.push({ icon: '⚠', text: `拖延让 ${primaryName} 更强了（HP +${e.hpDelta}，攻击 +${e.atkDelta}）`, tone: 'bad' })
         break
       case 'downed':
         lines.push({ icon: '✖', text: `${nameOf(e.characterId)} 倒下了！`, tone: 'bad' })
@@ -60,7 +67,7 @@ export function buildLogEntry(effects: GameEffect[], ctx: LogContext): CombatLog
         lines.push({
           icon: '💀',
           text: e.monsterHealed
-            ? `队伍被击溃，撤退重整旗鼓…（${enemyName} 趁机回复 ${e.monsterHealed}，剩 ${e.monsterHpAfter}）`
+            ? `队伍被击溃，撤退重整旗鼓…（${primaryName} 趁机回复 ${e.monsterHealed}，剩 ${e.monsterHpAfter}）`
             : '队伍被击溃，撤退重整旗鼓…',
           tone: 'bad',
         })
@@ -73,7 +80,7 @@ export function buildLogEntry(effects: GameEffect[], ctx: LogContext): CombatLog
         if (e.levelsGained > 0) leveled.add(e.characterId)
         break
       case 'victory':
-        lines.push({ icon: '🏆', text: `击败了 ${enemyName}！冒险推进到第 ${e.storyStage} 阶段`, tone: 'good' })
+        lines.push({ icon: '🏆', text: `击败了 ${teamLabel}！冒险推进到第 ${e.storyStage} 阶段`, tone: 'good' })
         if (e.nextEnemyHp != null) lines.push({ icon: '➡', text: `新的心魔现身（HP ${e.nextEnemyHp}）`, tone: 'info' })
         break
       case 'encounterCleared':
@@ -100,5 +107,5 @@ export function buildLogEntry(effects: GameEffect[], ctx: LogContext): CombatLog
   if (ctx.goldDelta > 0) lines.push({ icon: '🪙', text: `获得 ${ctx.goldDelta} 金币`, tone: 'good' })
 
   if (lines.length === 0) return null
-  return { id: ctx.id, at: ctx.at, enemy: enemyName, lines }
+  return { id: ctx.id, at: ctx.at, enemy: teamLabel, lines }
 }

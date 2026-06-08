@@ -2,6 +2,7 @@
 // by adding an entry here. This ships ORIGINAL placeholder characters (观星会 trio) — swap in
 // your own cast, or generate them via your own workflow. (§8, §14, §21)
 
+import { LOCAL_PACK } from '../content/localPack'
 import { statsForClassAtLevel } from '../game/leveling'
 import type { Character, ClassId, CompanionPersona, ID, SkillId, WorldId } from '../domain/types'
 
@@ -21,7 +22,7 @@ export interface CompanionDef {
   meeting: string[]
 }
 
-export const COMPANION_DEFS: Record<string, CompanionDef> = {
+const DEFAULT_COMPANION_DEFS: Record<string, CompanionDef> = {
   mira: {
     id: 'mira',
     name: '米拉',
@@ -97,8 +98,11 @@ export const COMPANION_DEFS: Record<string, CompanionDef> = {
   },
 }
 
+/** The active companion roster — a local content pack (gitignored) overrides the shipped sample. */
+export const COMPANION_DEFS: Record<string, CompanionDef> = LOCAL_PACK?.companions ?? DEFAULT_COMPANION_DEFS
+
 /** The primary companion for M0 / first-bond focus. */
-export const PRIMARY_COMPANION_ID = 'mira'
+export const PRIMARY_COMPANION_ID = LOCAL_PACK?.primaryCompanionId ?? 'mira'
 
 export function createCompanionCharacter(defId: string, now: Date): Character {
   const def = COMPANION_DEFS[defId]

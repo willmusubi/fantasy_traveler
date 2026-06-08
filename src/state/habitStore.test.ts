@@ -27,7 +27,7 @@ beforeEach(async () => {
     req.onsuccess = req.onerror = req.onblocked = () => resolve()
   })
   useGame.setState({
-    gameState: null, characters: [], affinities: {}, reaction: null, toasts: [], lastDamage: null,
+    gameState: null, characters: [], affinities: {}, reaction: null, toasts: [], lastDamageByEnemy: {},
     activeQuest: null, recruitedId: null, victorySummary: null, pendingBuffChoices: [], ready: false,
   })
   useHabits.setState({ habits: [], loaded: false })

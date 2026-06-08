@@ -95,9 +95,9 @@ export async function dispatchEvent(
   if (logEffects) {
     const entry = buildLogEntry(logEffects, {
       characters,
-      // The enemy fought this round (before any victory respawn). For an interactive round that's the
-      // snapshot taken at round start; otherwise the monster at the start of this dispatch.
-      enemy: result.roundLog?.enemy ?? gameState.monster,
+      // The enemy team fought this round (before any victory respawn). For an interactive round that's
+      // the snapshot taken at round start; otherwise the team at the start of this dispatch.
+      enemies: result.roundLog?.enemies ?? gameState.enemies,
       source: event.type,
       goldDelta: result.roundLog?.goldDelta ?? result.gameState.gold - gameState.gold,
       at: new Date().toISOString(),

@@ -17,7 +17,7 @@ beforeEach(async () => {
     const req = indexedDB.deleteDatabase('fantasy-traveler')
     req.onsuccess = req.onerror = req.onblocked = () => resolve()
   })
-  useGame.setState({ gameState: null, characters: [], affinities: {}, reaction: null, toasts: [], lastDamage: null, activeQuest: null, recruitedId: null, victorySummary: null, steppingEnabled: false, ready: false })
+  useGame.setState({ gameState: null, characters: [], affinities: {}, reaction: null, toasts: [], lastDamageByEnemy: {}, activeQuest: null, recruitedId: null, victorySummary: null, steppingEnabled: false, ready: false })
   useTodos.setState({ todos: [], loaded: false, completionCount: 0 })
   useQuest.setState({ status: 'idle', error: null, usedFallback: false })
 })
@@ -41,13 +41,13 @@ describe('interactive round (step-through)', () => {
 
     await useTodos.getState().complete(openId())
     expect(ar()).toBeTruthy() // paused, waiting for the first ally decision
-    const hpBefore = useGame.getState().gameState!.monster.hp
+    const hpBefore = useGame.getState().gameState!.enemies[0].hp
 
     await stepToEnd()
 
     const gs = useGame.getState().gameState!
     expect(gs.activeRound).toBeUndefined() // finalized
-    expect(gs.monster.hp).toBeLessThan(hpBefore) // the party struck it
+    expect(gs.enemies[0].hp).toBeLessThan(hpBefore) // the party struck it
     expect(gs.combatLog.length).toBe(1) // exactly one entry for the whole round
     expect(useTodos.getState().completionCount).toBe(1) // the felt-reward reaction fired once
   })
@@ -57,7 +57,7 @@ describe('interactive round (step-through)', () => {
     useGame.getState().setSteppingEnabled(true)
     // Weaken the enemy to 1 HP in IDB (the dispatch reads game state from the DB, not the store).
     const gs0 = useGame.getState().gameState!
-    const weak = { ...gs0, monster: { ...gs0.monster, hp: 1 } }
+    const weak = { ...gs0, enemies: [{ ...gs0.enemies[0], hp: 1 }] }
     await gameStateRepo.put(weak)
     useGame.setState({ gameState: weak })
 

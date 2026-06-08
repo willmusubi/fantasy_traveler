@@ -16,7 +16,7 @@ beforeEach(async () => {
     const req = indexedDB.deleteDatabase('fantasy-traveler')
     req.onsuccess = req.onerror = req.onblocked = () => resolve()
   })
-  useGame.setState({ gameState: null, characters: [], affinities: {}, reaction: null, toasts: [], lastDamage: null, activeQuest: null, recruitedId: null, ready: false })
+  useGame.setState({ gameState: null, characters: [], affinities: {}, reaction: null, toasts: [], lastDamageByEnemy: {}, activeQuest: null, recruitedId: null, ready: false })
   useTodos.setState({ todos: [], loaded: false, completionCount: 0 })
   useQuest.setState({ status: 'idle', error: null, usedFallback: false })
 })
@@ -33,7 +33,7 @@ describe('todo store — un-check / edit / reorder', () => {
     const id = useTodos.getState().todos[0].id
     await useTodos.getState().complete(id)
 
-    const hpAfterFirst = useGame.getState().gameState!.monster.hp
+    const hpAfterFirst = useGame.getState().gameState!.enemies[0].hp
     const affinityAfterFirst = useGame.getState().affinities[companionId].points
     const countAfterFirst = useTodos.getState().completionCount
     expect(hpAfterFirst).toBeLessThan(900) // monster took damage
@@ -50,7 +50,7 @@ describe('todo store — un-check / edit / reorder', () => {
     useGame.setState({ reaction: null })
     await useTodos.getState().complete(id)
     expect(useTodos.getState().todos[0].status).toBe('done')
-    expect(useGame.getState().gameState!.monster.hp).toBe(hpAfterFirst) // no extra damage
+    expect(useGame.getState().gameState!.enemies[0].hp).toBe(hpAfterFirst) // no extra damage
     expect(useGame.getState().affinities[companionId].points).toBe(affinityAfterFirst)
     expect(useTodos.getState().completionCount).toBe(countAfterFirst)
     expect(useGame.getState().reaction).toBeNull() // no felt-reward reaction on re-complete
@@ -174,7 +174,7 @@ describe('todo store — countdown timer', () => {
     expect(t.timerFiredAt).toBeTruthy() // spent
     const log = useGame.getState().gameState!.combatLog
     expect(log[log.length - 1].lines.some((l) => l.text.includes('进攻'))).toBe(true)
-    expect(useGame.getState().gameState!.monster.maxHp).toBe(900) // no growth
+    expect(useGame.getState().gameState!.enemies[0].maxHp).toBe(900) // no growth
 
     // Second sweep is a no-op (fired guard): nothing changes.
     const firedAt = t.timerFiredAt

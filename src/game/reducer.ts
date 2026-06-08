@@ -2,10 +2,10 @@
 // state + affinity + effects. NEVER reads the clock or rng — `now` and `newId` are
 // injected so cap/threshold/spawn behavior is fully testable.
 //
-// Combat is now an ACTIVE boss fight: the monster attacks on its own CTB turn, characters have
-// per-character HP/MP (GameState.resources; missing entry = full), skills are cast as
-// their own event, and gold is earned. Monster-damage + victory resolution is shared
-// by todo-completion and skill-cast via resolveMonsterDamage.
+// Combat is an ACTIVE team fight: each enemy in gs.enemies attacks on its own CTB turn, characters
+// have per-character HP/MP (GameState.resources; missing entry = full), skills are cast as their
+// own event, and gold is earned. Per-enemy damage (damageEnemy) is split from the whole-team
+// clear cascade (resolveEncounterClear); both are shared by todo-completion and skill-cast.
 
 import { applyAffinityGain } from '../companion/affinity'
 import { unlockedSkills, type SkillDef } from '../companion/skills'
@@ -35,7 +35,7 @@ import {
 import { localDateKey } from '../domain/dates'
 import type { ActiveRound, Affinity, CharResource, Character, GameEffect, GameState, ID, Mood, MoodFlag, Monster, OwnedEquipment, PartyBuff, Priority, Quest, SkillId, Stats, TurnActor } from '../domain/types'
 import type { SynergyDef } from '../world/relationships'
-import { ctbRound, defeatRewards, monsterFromEncounter, spawnMonster, type CtbUnit } from './combat'
+import { autoTargetEnemy, ctbRound, defeatRewards, livingEnemies, primaryEnemy, spawnMonster, teamCleared, teamFromEncounter, type CtbUnit } from './combat'
 import { effectiveStats, type CombatContext } from './effectiveStats'
 import type { DomainEvent } from './events'
 import { applyXp } from './leveling'
@@ -75,7 +75,7 @@ export interface ReducerResult {
   effects: GameEffect[]
   /** Present only on the dispatch that FINALIZES an interactive round: the full round's effects +
    *  log context, so the pipeline builds ONE combat-log entry (per-step dispatches skip logging). */
-  roundLog?: { effects: GameEffect[]; enemy: Monster; goldDelta: number }
+  roundLog?: { effects: GameEffect[]; enemies: Monster[]; goldDelta: number }
 }
 
 // ---------- Shared mutable "turn" context ----------
@@ -190,15 +190,22 @@ function dealToParty(t: Turn, rawAmount: number, ctx: CombatContext): void {
   if (hpAfter <= 0) t.effects.push({ type: 'downed', characterId: target.id })
 }
 
-/** Setback when every on-field member is downed: revive low, the monster recovers some HP. */
+/** Setback when every on-field member is downed: revive low, the primary enemy recovers some HP. */
 function wipeCheck(t: Turn): void {
   if (t.combatants.some((c) => rOf(t, c).hp > 0)) return
   for (const c of t.combatants) {
     setR(t, c, { hp: sOf(t, c).maxHp * WIPE_REVIVE_HP_PCT, mp: rOf(t, c).mp })
   }
-  const m = t.gs.monster
+  const idx = t.gs.enemies.findIndex((m) => m.hp > 0)
+  if (idx < 0) {
+    t.effects.push({ type: 'partyWiped' }) // no living enemy to heal — just revive
+    return
+  }
+  const m = t.gs.enemies[idx]
   const hpAfter = Math.min(m.maxHp, Math.round(m.hp + m.maxHp * WIPE_MONSTER_HEAL_PCT))
-  t.gs.monster = { ...m, hp: hpAfter }
+  const next = [...t.gs.enemies]
+  next[idx] = { ...m, hp: hpAfter }
+  t.gs.enemies = next
   t.effects.push({ type: 'partyWiped', monsterHealed: hpAfter - m.hp, monsterHpAfter: hpAfter })
 }
 
@@ -213,31 +220,62 @@ function healChar(t: Turn, c: Character, amount: number): void {
 
 // ---------- Active-turn (CTB) helper ----------
 
-/** The live CTB units (living combatants + the monster) from the current persistent gauges. */
+/** The live CTB units (living combatants + every living enemy) from the current persistent gauges. */
 function ctbUnitsOf(t: Turn, ctx: CombatContext): CtbUnit[] {
   const able = t.combatants.filter((c) => rOf(t, c).hp > 0)
   return [
     ...able.map((c) => ({ side: 'party' as const, id: c.id, spd: effectiveStats(c, ctx).spd, charge: t.gs.charge[c.id] ?? 0 })),
-    { side: 'enemy' as const, id: t.gs.monster.id, spd: t.gs.monster.spd, charge: t.gs.charge[t.gs.monster.id] ?? 0 },
+    ...livingEnemies(t.gs.enemies).map((m) => ({ side: 'enemy' as const, id: m.id, spd: m.spd, charge: t.gs.charge[m.id] ?? 0 })),
   ]
 }
 
-/** Apply damage to the monster and, if it falls, resolve the full victory (shared by
- *  todo completion and skill kills). Returns true on a fresh victory. */
-function resolveMonsterDamage(t: Turn, dmg: number, actorId: ID, fromSkill = false): boolean {
-  const m = t.gs.monster
-  const monsterId = m.id
-  const hpAfter = Math.max(0, m.hp - dmg)
-  t.gs.monster = { ...m, hp: hpAfter }
-  t.effects.push({ type: 'damage', amount: dmg, monsterHpAfter: hpAfter, actorId, fromSkill })
-  if (hpAfter > 0 || t.gs.defeatedMonsterId === monsterId) return false
+/** Resolve the enemy a single-target action hits: the explicitly chosen LIVING enemy (manual
+ *  targeting in the step-through), else the smart auto-target (lowest-HP living). Undefined only
+ *  when every enemy is dead. */
+function resolveTarget(t: Turn, targetId?: ID): Monster | undefined {
+  if (targetId) {
+    const chosen = t.gs.enemies.find((m) => m.id === targetId && m.hp > 0)
+    if (chosen) return chosen
+  }
+  return autoTargetEnemy(t.gs.enemies)
+}
 
-  // VICTORY — the main payout, scaled to the defeated enemy's strength.
+/** Apply `dmg` to the enemy `enemyId`; push a damage effect carrying `targetId`. If that empties
+ *  the LAST living enemy, run the encounter-clear cascade. Returns true on a fresh team-clear.
+ *  Shared by todo-completion basic attacks and skill kills. An already-dead enemy is a no-op (an
+ *  AoE pass may still name it). */
+function damageEnemy(t: Turn, enemyId: ID, dmg: number, actorId: ID, fromSkill = false): boolean {
+  const idx = t.gs.enemies.findIndex((m) => m.id === enemyId)
+  if (idx < 0) return false
+  const m = t.gs.enemies[idx]
+  if (m.hp <= 0) return false
+  const hpAfter = Math.max(0, m.hp - dmg)
+  const next = [...t.gs.enemies]
+  next[idx] = { ...m, hp: hpAfter }
+  t.gs.enemies = next
+  t.effects.push({ type: 'damage', amount: dmg, monsterHpAfter: hpAfter, actorId, targetId: enemyId, fromSkill })
+  if (!teamCleared(t.gs.enemies)) return false
+  return resolveEncounterClear(t)
+}
+
+/** The whole enemy team just fell: book the clear payout ONCE — guarded by `clearedEncounterKey`,
+ *  which includes the primary's id so each spawn (endless or quest) is a distinct, re-clearable
+ *  encounter — then advance the quest / spawn the next team / spawn the next endless enemy. Reward
+ *  sums over the whole team. Returns true. (Was the back half of the old resolveMonsterDamage.) */
+function resolveEncounterClear(t: Turn): boolean {
+  const primaryId = (primaryEnemy(t.gs.enemies) ?? t.gs.enemies[0])?.id ?? 'none'
+  const key = `${t.gs.activeQuestId ?? 'endless'}:${t.gs.encounterIndex}:${primaryId}`
+  if (t.gs.clearedEncounterKey === key) return false // already booked this encounter's payout
+  t.gs.clearedEncounterKey = key
+
+  // VICTORY — the main payout, scaled to the whole defeated team's strength (sum over all bodies).
   t.gs.storyStage += 1
-  t.gs.defeatedMonsterId = monsterId
   // Habit buffs/debuffs last only until a victory — clear them now (skill buffs keep decaying).
   t.gs.partyBuffs = t.gs.partyBuffs.filter((b) => !b.untilVictory)
-  const reward = defeatRewards(m)
+  const reward = t.gs.enemies.reduce(
+    (acc, m) => { const r = defeatRewards(m); return { xp: acc.xp + r.xp, gold: acc.gold + r.gold } },
+    { xp: 0, gold: 0 },
+  )
   grantXp(t, reward.xp)
   gainAffinity(t, VICTORY_AFFINITY)
   t.gs.gold += reward.gold
@@ -257,7 +295,7 @@ function resolveMonsterDamage(t: Turn, dmg: number, actorId: ID, fromSkill = fal
     const nextEnc = quest.encounters[nextIdx]
     if (nextEnc) {
       t.gs.encounterIndex = nextIdx
-      t.gs.monster = monsterFromEncounter(nextEnc, t.gs.storyStage, t.input.openHighCount, newId)
+      t.gs.enemies = teamFromEncounter(nextEnc, t.gs.storyStage, t.input.openHighCount, newId)
       t.effects.push({
         type: 'encounterCleared', questId: quest.id, encounterIndex: clearedIdx,
         victoryText: cleared?.narrationVictory, nextEnemy: nextEnc.enemyName,
@@ -279,11 +317,11 @@ function resolveMonsterDamage(t: Turn, dmg: number, actorId: ID, fromSkill = fal
       grantXp(t, quest.reward.playerXp ?? 0)
       t.gs.gold += GOLD_QUEST_CLEAR
       t.gs.activeQuestId = undefined
-      t.gs.monster = spawnMonster(t.gs.storyStage, t.input.openHighCount, newId)
+      t.gs.enemies = [spawnMonster(t.gs.storyStage, t.input.openHighCount, newId)]
     }
   } else {
-    t.gs.monster = spawnMonster(t.gs.storyStage, t.input.openHighCount, newId)
-    t.effects.push({ type: 'victory', defeatedMonsterId: monsterId, storyStage: t.gs.storyStage, nextEnemyHp: t.gs.monster.maxHp })
+    t.gs.enemies = [spawnMonster(t.gs.storyStage, t.input.openHighCount, newId)]
+    t.effects.push({ type: 'victory', defeatedMonsterId: primaryId, storyStage: t.gs.storyStage, nextEnemyHp: t.gs.enemies[0].maxHp })
   }
   return true
 }
@@ -302,7 +340,7 @@ export function gameReducer(input: ReducerInput, event: DomainEvent): ReducerRes
     case 'RoundBegan':
       return reduceRoundBegan(input, event.todo.priority, event.todo.id)
     case 'RoundAdvanced':
-      return reduceRoundAdvanced(input, event.choice, event.auto)
+      return reduceRoundAdvanced(input, event.choice, event.auto, event.targetId)
     case 'TodoOverdue':
       return reduceTodoOverdue(input)
     case 'TaskTimerExpired':
@@ -321,7 +359,7 @@ export function gameReducer(input: ReducerInput, event: DomainEvent): ReducerRes
  *  skillCast log line. The caller has already checked the caster is alive and can pay. The attack
  *  damage is tagged `fromSkill` so the log shows only the cast line (the float still counts it).
  *  Returns true iff an attack skill landed the killing blow. */
-function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: CombatContext): boolean {
+function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: CombatContext, targetId?: ID): boolean {
   const r = rOf(t, caster)
   setR(t, caster, { hp: r.hp - (skill.hpCost ?? 0), mp: r.mp - skill.mpCost })
   const casterId = caster.id
@@ -329,10 +367,30 @@ function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: Comb
   if (skill.kind === 'attack') {
     // Physical skills scale off atk; magic skills (scaling: 'mag') off the caster's magic.
     const scaleStat = skill.scaling === 'mag' ? eff.mag : eff.atk
-    const dmg = Math.max(1, Math.round(scaleStat * skill.power * SKILL_ATK_MULT - t.gs.monster.def))
-    const monsterHpAfter = Math.max(0, t.gs.monster.hp - dmg) // shown in the log so it reconciles with the bar
-    t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'attack', amount: dmg, monsterHpAfter })
-    return resolveMonsterDamage(t, dmg, casterId, true)
+    const power = scaleStat * skill.power * SKILL_ATK_MULT
+    if (skill.target === 'allEnemies') {
+      // AoE: hit every CURRENTLY-living enemy. Snapshot ids first (a clear respawns the array) and
+      // stop once a hit clears the team, so we never strike the freshly-spawned next team.
+      const ids = livingEnemies(t.gs.enemies).map((m) => m.id)
+      const firstDef = t.gs.enemies.find((m) => m.id === ids[0])?.def ?? 0
+      t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'attack', amount: Math.max(1, Math.round(power - firstDef)) })
+      let cleared = false
+      for (const id of ids) {
+        if (cleared) break
+        const e = t.gs.enemies.find((m) => m.id === id)
+        if (!e || e.hp <= 0) continue
+        const dmg = Math.max(1, Math.round(power - e.def))
+        cleared = damageEnemy(t, id, dmg, casterId, true) || cleared
+      }
+      return cleared
+    }
+    // single-target attack: the chosen enemy, else the auto-target.
+    const target = resolveTarget(t, targetId)
+    if (!target) return false
+    const dmg = Math.max(1, Math.round(power - target.def))
+    const monsterHpAfter = Math.max(0, target.hp - dmg) // shown in the log so it reconciles with the bar
+    t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'attack', amount: dmg, monsterHpAfter, targetId: target.id })
+    return damageEnemy(t, target.id, dmg, casterId, true)
   }
   if (skill.kind === 'heal') {
     const heal = Math.round(eff.mag * skill.power * SKILL_HEAL_MULT)
@@ -353,9 +411,14 @@ function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: Comb
     t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'buff', amount: Math.round(skill.power * 100) })
     return false
   }
-  // debuff: lower the current monster's defense.
-  const m = t.gs.monster
-  t.gs.monster = { ...m, def: Math.max(0, Math.round(m.def * (1 - skill.power))) }
+  // debuff: lower defense. 'allEnemies' → every living enemy; else the chosen/auto single target.
+  const lowerDef = (m: Monster): Monster => ({ ...m, def: Math.max(0, Math.round(m.def * (1 - skill.power))) })
+  if (skill.target === 'allEnemies') {
+    t.gs.enemies = t.gs.enemies.map((m) => (m.hp > 0 ? lowerDef(m) : m))
+  } else {
+    const target = resolveTarget(t, targetId)
+    if (target) t.gs.enemies = t.gs.enemies.map((m) => (m.id === target.id ? lowerDef(m) : m))
+  }
   t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'debuff', amount: Math.round(skill.power * 100) })
   return false
 }
@@ -411,10 +474,15 @@ function resolveTurnInto(
   index: number,
   acted: Set<ID>,
   choice?: SkillId | 'basic',
+  targetId?: ID,
 ): boolean {
   const act = rctx.order[index]
   if (act.side !== 'party') {
-    dealToParty(t, t.gs.monster.atk * ENEMY_ATK_MULT, ctx) // the enemy's turn — strike the sturdiest
+    // The acting enemy's turn — look it up by id. A lap turn of an enemy that died earlier this
+    // round is skipped. It strikes the sturdiest member.
+    const attacker = t.gs.enemies.find((m) => m.id === act.id)
+    if (!attacker || attacker.hp <= 0) return false
+    dealToParty(t, attacker.atk * ENEMY_ATK_MULT, ctx)
     return false
   }
   const member = t.combatants.find((c) => c.id === act.id)
@@ -425,13 +493,16 @@ function resolveTurnInto(
   const skill = plannedId && plannedId !== 'basic' ? unlockedSkills(member).find((s) => s.id === plannedId) : undefined
   const r = rOf(t, member)
   if (skill && r.mp >= skill.mpCost && r.hp > (skill.hpCost ?? 0)) {
-    return applySkillEffect(t, member, skill, ctx) // planned skill fires (spends MP/HP)
+    return applySkillEffect(t, member, skill, ctx, targetId) // planned skill fires (spends MP/HP)
   }
   // Basic attack scales off the member's BEST offensive stat: casters (high mag, low atk) swing with
-  // magic so they aren't floored to 1 by the boss's defense; physical units still use atk (atk≥mag).
+  // magic so they aren't floored to 1 by the enemy's defense; physical units still use atk (atk≥mag).
+  // It hits the chosen target (manual step-through), else the auto-target (lowest-HP living enemy).
+  const target = resolveTarget(t, targetId)
+  if (!target) return false // no living enemy (e.g. a lap after the team already cleared)
   const eff = effectiveStats(member, ctx)
-  const dmg = Math.max(1, Math.round(Math.max(eff.atk, eff.mag) * rctx.mult - t.gs.monster.def))
-  return resolveMonsterDamage(t, dmg, member.id) // basic attack (priority-scaled)
+  const dmg = Math.max(1, Math.round(Math.max(eff.atk, eff.mag) * rctx.mult - target.def))
+  return damageEnemy(t, target.id, dmg, member.id) // basic attack (priority-scaled)
 }
 
 /** True if order[index] is a LIVE party member taking its FIRST turn — the point the interactive
@@ -443,11 +514,12 @@ function isLiveDecision(t: Turn, order: TurnActor[], index: number, acted: Set<I
   return !!member && rOf(t, member).hp > 0
 }
 
-/** Persist the round's CTB gauges (combatants + current monster; a respawned enemy starts at 0). */
+/** Persist the round's CTB gauges (combatants + every current enemy). A respawned next-team enemy
+ *  isn't in `charges` and starts cold at 0; a same-encounter dead enemy keeps its (inert) gauge. */
 function commitCharges(t: Turn, charges: Record<ID, number>): void {
   const nextCharge: Record<ID, number> = {}
   for (const c of t.combatants) nextCharge[c.id] = charges[c.id] ?? t.gs.charge[c.id] ?? 0
-  nextCharge[t.gs.monster.id] = charges[t.gs.monster.id] ?? 0
+  for (const m of t.gs.enemies) nextCharge[m.id] = charges[m.id] ?? t.gs.charge[m.id] ?? 0
   t.gs.charge = nextCharge
 }
 
@@ -473,7 +545,7 @@ function finalizeRoundInto(t: Turn, ar: ActiveRound, victory: boolean, priorEffe
   applyTaskRewards(t, ar.priority, victory)
   t.gs.activeRound = undefined
   const result = finishTurn(t)
-  result.roundLog = { effects: [...priorEffects, ...t.effects], enemy: ar.enemyAtStart, goldDelta: t.gs.gold - ar.goldAtStart }
+  result.roundLog = { effects: [...priorEffects, ...t.effects], enemies: ar.enemiesAtStart, goldDelta: t.gs.gold - ar.goldAtStart }
   return result
 }
 
@@ -516,7 +588,7 @@ function reduceRoundBegan(input: ReducerInput, priority: Priority, todoId: ID): 
     actedFirstTurn: [...acted],
     effects: [...t.effects],
     goldAtStart: input.gameState.gold,
-    enemyAtStart: input.gameState.monster,
+    enemiesAtStart: input.gameState.enemies,
     todoId,
   }
   t.gs.activeRound = ar
@@ -526,7 +598,7 @@ function reduceRoundBegan(input: ReducerInput, priority: Priority, todoId: ID): 
 
 /** Interactive path — ADVANCE: resolve the paused ally with `choice` (or, with `auto`, resolve all
  *  remaining turns using gs.roundPlan), then auto-run to the next live decision or finalize. */
-function reduceRoundAdvanced(input: ReducerInput, choice?: SkillId | 'basic', auto?: boolean): ReducerResult {
+function reduceRoundAdvanced(input: ReducerInput, choice?: SkillId | 'basic', auto?: boolean, targetId?: ID): ReducerResult {
   const t = newTurn(input)
   const ar = t.gs.activeRound
   if (!ar) return noop(input)
@@ -542,7 +614,7 @@ function reduceRoundAdvanced(input: ReducerInput, choice?: SkillId | 'basic', au
     }
   } else {
     if (index < rctx.order.length) {
-      victory = resolveTurnInto(t, rctx, ctx, index, acted, choice)
+      victory = resolveTurnInto(t, rctx, ctx, index, acted, choice, targetId)
       index++
     }
     while (index < rctx.order.length && !victory && !isLiveDecision(t, rctx.order, index, acted)) {
@@ -557,16 +629,19 @@ function reduceRoundAdvanced(input: ReducerInput, choice?: SkillId | 'basic', au
 
 function reduceTodoOverdue(input: ReducerInput): ReducerResult {
   const t = newTurn(input)
-  const m = t.gs.monster
 
-  // The 心魔 feeds on procrastination: it grows AND lands a hit on the party.
-  t.gs.monster = {
-    ...m,
-    hp: Math.min(m.maxHp, m.hp + OVERDUE_HP_GROW),
-    maxHp: m.maxHp + OVERDUE_HP_GROW,
-    atk: m.atk + OVERDUE_ATK_GROW,
+  // The 心魔 feeds on procrastination: the PRIMARY enemy grows AND lands a hit on the party.
+  const prim = primaryEnemy(t.gs.enemies)
+  if (prim) {
+    const grown: Monster = {
+      ...prim,
+      hp: Math.min(prim.maxHp, prim.hp + OVERDUE_HP_GROW),
+      maxHp: prim.maxHp + OVERDUE_HP_GROW,
+      atk: prim.atk + OVERDUE_ATK_GROW,
+    }
+    t.gs.enemies = t.gs.enemies.map((m) => (m.id === prim.id ? grown : m))
+    t.effects.push({ type: 'monsterGrew', hpDelta: OVERDUE_HP_GROW, atkDelta: OVERDUE_ATK_GROW })
   }
-  t.effects.push({ type: 'monsterGrew', hpDelta: OVERDUE_HP_GROW, atkDelta: OVERDUE_ATK_GROW })
   dealToParty(t, OVERDUE_PARTY_DMG, combatCtx(input))
   wipeCheck(t)
 
@@ -585,7 +660,8 @@ function reduceTodoOverdue(input: ReducerInput): ReducerResult {
  *  once — the store stamps timerFiredAt so it never repeats. */
 function reduceTaskTimerExpired(input: ReducerInput): ReducerResult {
   const t = newTurn(input)
-  dealToParty(t, t.gs.monster.atk * ENEMY_ATK_MULT, combatCtx(input))
+  const prim = primaryEnemy(t.gs.enemies)
+  if (prim) dealToParty(t, prim.atk * ENEMY_ATK_MULT, combatCtx(input))
   wipeCheck(t)
 
   const companion = activeCompanion(t.party)

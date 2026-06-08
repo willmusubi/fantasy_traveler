@@ -1,7 +1,7 @@
 import { Fragment, useState } from 'react'
 import { SKILL_DEFS } from '../companion/skills'
 import type { Character, PartyBuff } from '../domain/types'
-import { ctbRound, type CtbUnit } from '../game/combat'
+import { autoTargetEnemy, ctbRound, livingEnemies, type CtbUnit } from '../game/combat'
 import { effectiveStats } from '../game/effectiveStats'
 import { resourceOf } from '../game/resources'
 import { t } from '../i18n'
@@ -9,7 +9,7 @@ import { selectPlayer, useGame } from '../state/gameStore'
 import { useQuest } from '../state/questStore'
 import { activeSynergiesFor } from '../world/relationships'
 import { FIRST_WORLD_ID, WORLD_DEFS } from '../world/worlds'
-import { BattleSprite, CLASS_EMOJI, enemyEmoji } from './battleSprites'
+import { BattleSprite, CLASS_EMOJI, EnemyCard, enemyEmoji } from './battleSprites'
 import { DefaultActionsModal } from './DefaultActionsModal'
 import { TurnPicker } from './TurnPicker'
 
@@ -22,7 +22,9 @@ export function MonsterHUD() {
   const gs = useGame((s) => s.gameState)
   const characters = useGame((s) => s.characters)
   const player = useGame(selectPlayer)
-  const lastDamage = useGame((s) => s.lastDamage)
+  const lastDamageByEnemy = useGame((s) => s.lastDamageByEnemy)
+  const combatTargetId = useGame((s) => s.combatTargetId)
+  const setCombatTarget = useGame((s) => s.setCombatTarget)
   const activeQuest = useGame((s) => s.activeQuest)
   const [defaultsOpen, setDefaultsOpen] = useState(false)
   const questStatus = useQuest((s) => s.status)
@@ -32,7 +34,9 @@ export function MonsterHUD() {
   const activeWorldId = gs.activeWorldId ?? FIRST_WORLD_ID
   const world = WORLD_DEFS[activeWorldId]
   const generating = questStatus === 'generating'
-  const monster = gs.monster
+  const enemies = gs.enemies
+  const inQuest = Boolean(activeQuest)
+  const enemyNameOf = (m: { displayName?: string; nameKey: string }): string => m.displayName ?? t(m.nameKey)
   const partyCompanions = gs.partyIds
     .map((id) => characters.find((c) => c.id === id))
     .filter((c): c is Character => c != null && c.kind === 'companion')
@@ -40,15 +44,22 @@ export function MonsterHUD() {
   // Whose first turn it is right now (drives the sprite highlight + the inline TurnPicker).
   const arActor = gs.activeRound ? gs.activeRound.order[gs.activeRound.index] : undefined
   const activeId = arActor?.side === 'party' ? arActor.id : undefined
+  const activeEnemyId = arActor?.side === 'enemy' ? arActor.id : undefined
+  // An ally is choosing this turn → enemy cards become clickable targets and we highlight the
+  // effective target (the player's pick if still alive, else the smart auto-target).
+  const allyDeciding = arActor?.side === 'party'
+  const autoTarget = autoTargetEnemy(enemies)
+  const pickedAlive = combatTargetId ? enemies.find((m) => m.id === combatTargetId && m.hp > 0) : undefined
+  const effectiveTargetId = (pickedAlive ?? autoTarget)?.id
 
-  const pct = Math.max(0, Math.round((monster.hp / monster.maxHp) * 100))
-  const low = pct <= 30
   const encounter = activeQuest?.encounters[gs.encounterIndex]
   const title = activeQuest ? activeQuest.title : '心魔讨伐'
   const subtitle = activeQuest
     ? `第 ${gs.encounterIndex + 1}/${activeQuest.encounters.length} 关`
     : `第 ${gs.storyStage + 1} 阶段`
-  const bossName = monster.displayName ?? t(monster.nameKey)
+  // Team label: primary name + 「等」 when there are escorts, else the single name.
+  const primaryName = enemies[0] ? enemyNameOf(enemies[0]) : '敌方'
+  const teamLabel = enemies.length > 1 ? `${primaryName} 等` : primaryName
 
   // Turn-order forecast, Octopath-style: run ctbRound TWICE (the very function task-completion
   // resolves with) to preview THIS round then the NEXT — exact, enemies included. 1 round = 1 task.
@@ -59,7 +70,7 @@ export function MonsterHUD() {
     ...(livingForOrder.length ? livingForOrder : partyForOrder).map((c) => ({
       side: 'party' as const, id: c.id, spd: effectiveStats(c, turnCtx).spd, charge: gs.charge[c.id] ?? 0,
     })),
-    { side: 'enemy' as const, id: monster.id, spd: monster.spd, charge: gs.charge[monster.id] ?? 0 },
+    ...livingEnemies(enemies).map((m) => ({ side: 'enemy' as const, id: m.id, spd: m.spd, charge: gs.charge[m.id] ?? 0 })),
   ]
   const round1 = ctbRound(ctbUnits)
   const round2 = ctbRound(ctbUnits.map((u) => ({ ...u, charge: round1.charges[u.id] ?? 0 })))
@@ -96,13 +107,17 @@ export function MonsterHUD() {
         </div>
 
         <div className="enemy-side">
-          <div className={`monster-sprite ${low ? 'low' : ''}`} aria-hidden>
-            {enemyEmoji(bossName, Boolean(activeQuest))}
-          </div>
-          <div className="monster-shadow" aria-hidden />
-          {lastDamage && (
-            <div className="float" key={lastDamage.key}>-{lastDamage.amount}</div>
-          )}
+          {enemies.map((m) => (
+            <EnemyCard
+              key={m.id}
+              enemy={m}
+              inQuest={inQuest}
+              float={lastDamageByEnemy[m.id]}
+              isTarget={allyDeciding && m.id === effectiveTargetId}
+              active={m.id === activeEnemyId}
+              onSelect={allyDeciding ? setCombatTarget : undefined}
+            />
+          ))}
         </div>
       </div>
 
@@ -114,11 +129,13 @@ export function MonsterHUD() {
           const { a, round } = slot
           const isEnemy = a.side === 'enemy'
           const c = isEnemy ? undefined : partyForOrder.find((x) => x.id === a.id)
+          const enemyUnit = isEnemy ? enemies.find((m) => m.id === a.id) : undefined
           const lap = turnSlots.slice(0, idx).some((s) => s.round === round && s.a.id === a.id && s.a.side === a.side)
           const current = idx === 0
           const firstOfNext = idx === nextRoundStart
-          const emoji = isEnemy ? enemyEmoji(bossName, Boolean(activeQuest)) : c?.kind === 'player' ? CLASS_EMOJI[c.classId] ?? '⚔️' : '🙂'
-          const name = isEnemy ? bossName : c?.name ?? ''
+          const enemyName = enemyUnit ? enemyNameOf(enemyUnit) : primaryName
+          const emoji = isEnemy ? enemyEmoji(enemyName, inQuest) : c?.kind === 'player' ? CLASS_EMOJI[c.classId] ?? '⚔️' : '🙂'
+          const name = isEnemy ? enemyName : c?.name ?? ''
           return (
             <Fragment key={idx}>
               {firstOfNext && <span className="turn-round-sep" aria-hidden>┊ 下一回合</span>}
@@ -149,15 +166,11 @@ export function MonsterHUD() {
 
       <div className="boss-bar">
         <div className="boss-bar-head">
-          <span className="boss-name">{bossName}</span>
-          <span className="boss-lv">Lv.{monster.level}</span>
-        </div>
-        <div className="hpbar">
-          <div className={`hpbar-fill ${low ? 'low' : ''}`} style={{ width: `${pct}%` }} />
-          <div className="hpbar-label">{monster.hp} / {monster.maxHp}</div>
+          <span className="boss-name">{teamLabel}</span>
+          {enemies.length > 1 && <span className="boss-lv">{livingEnemies(enemies).length}/{enemies.length} 存活</span>}
         </div>
         {activeQuest ? (
-          <div className="boss-hint">完成一个任务，按出手顺序逐个角色选择行动（技能消耗 MP）</div>
+          <div className="boss-hint">完成一个任务，按出手顺序逐个角色选择行动；点击敌人可切换目标（技能消耗 MP）</div>
         ) : (
           <div className="stage-cta-wrap">
             <span className="stage-cta-hint">

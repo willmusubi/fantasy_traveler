@@ -16,11 +16,14 @@ describe('观星会 world (canon)', () => {
     expect(c3.reward.unlockCompanionIds).toHaveLength(0)
   })
 
-  it('every authored boss encounter references a real antagonist id', () => {
+  it('every authored boss encounter (and its team adds) references a real antagonist id', () => {
     const ids = new Set(w.antagonists.map((a) => a.id))
     for (const ch of w.storyChapters) {
       for (const e of ch.encounters) {
         if (e.antagonistId) expect(ids.has(e.antagonistId)).toBe(true)
+        for (const a of e.adds ?? []) {
+          if (a.antagonistId) expect(ids.has(a.antagonistId)).toBe(true)
+        }
       }
     }
   })

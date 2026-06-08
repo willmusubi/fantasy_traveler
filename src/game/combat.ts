@@ -186,3 +186,48 @@ export function monsterFromEncounter(
     theme: enc.enemyTheme,
   }
 }
+
+/** Build the full enemy TEAM for an encounter: primary (enemies[0]) + each add (its own scaling).
+ *  An encounter with no `adds` returns a 1-element team — identical to the old single-enemy spawn. */
+export function teamFromEncounter(
+  enc: EncounterSpec,
+  storyStage: number,
+  openHighCount: number,
+  idFactory: () => string,
+): Monster[] {
+  const primary = monsterFromEncounter(enc, storyStage, openHighCount, idFactory)
+  const adds = (enc.adds ?? []).map((a) =>
+    monsterFromEncounter(
+      { ...enc, enemyName: a.enemyName, enemyTheme: a.enemyTheme, antagonistId: a.antagonistId, hpScale: a.hpScale, defScale: a.defScale },
+      storyStage,
+      openHighCount,
+      idFactory,
+    ),
+  )
+  return [primary, ...adds]
+}
+
+// ---------- Enemy-team helpers (multi-enemy combat) ----------
+
+/** The living enemies (hp > 0), in array order (primary first). */
+export function livingEnemies(enemies: Monster[]): Monster[] {
+  return enemies.filter((m) => m.hp > 0)
+}
+
+/** Smart auto-target: the lowest-HP LIVING enemy (ties → earliest in array = the primary first).
+ *  This is the picker's default pre-selection AND the fallback for passive/auto/non-adventure
+ *  resolution. Returns undefined only if every enemy is dead. */
+export function autoTargetEnemy(enemies: Monster[]): Monster | undefined {
+  return livingEnemies(enemies).reduce<Monster | undefined>((best, m) => (!best || m.hp < best.hp ? m : best), undefined)
+}
+
+/** The encounter's primary: the first LIVING enemy if any, else enemies[0] (the authored boss).
+ *  Used for overdue/timer flavor (which enemy grows / takes the free swing). */
+export function primaryEnemy(enemies: Monster[]): Monster | undefined {
+  return enemies.find((m) => m.hp > 0) ?? enemies[0]
+}
+
+/** Whole team defeated? (an empty team reads as cleared — defensive). */
+export function teamCleared(enemies: Monster[]): boolean {
+  return enemies.every((m) => m.hp <= 0)
+}

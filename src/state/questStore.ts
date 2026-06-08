@@ -1,7 +1,7 @@
 import { create } from 'zustand'
 import { gameStateRepo, questsRepo } from '../data/repositories'
 import type { Character, WorldId } from '../domain/types'
-import { monsterFromEncounter } from '../game/combat'
+import { teamFromEncounter } from '../game/combat'
 import { buildAndGenerateQuest } from '../game/storylineService'
 import { WORLD_DEFS } from '../world/worlds'
 import { selectPlayer, useGame } from './gameStore'
@@ -47,7 +47,7 @@ export const useQuest = create<QuestStore>((set) => ({
       })
 
       const openHigh = useTodos.getState().todos.filter((t) => t.status === 'open' && t.priority === 'high').length
-      const monster = monsterFromEncounter(quest.encounters[0], gs.storyStage, openHigh, () => crypto.randomUUID())
+      const enemies = teamFromEncounter(quest.encounters[0], gs.storyStage, openHigh, () => crypto.randomUUID())
 
       await questsRepo.put(quest)
       await gameStateRepo.put({
@@ -55,8 +55,8 @@ export const useQuest = create<QuestStore>((set) => ({
         activeWorldId: worldId,
         activeQuestId: quest.id,
         encounterIndex: 0,
-        monster,
-        defeatedMonsterId: undefined,
+        enemies,
+        clearedEncounterKey: undefined,
       })
       await useGame.getState().hydrate()
       set({ status: 'idle', usedFallback })

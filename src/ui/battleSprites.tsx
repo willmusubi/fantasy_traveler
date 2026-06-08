@@ -1,7 +1,8 @@
 // Shared battle-sprite primitives (placeholder emoji until real pixel art lands), used by both the
 // always-on MonsterHUD and the interactive RoundResolver overlay.
 
-import type { CharResource, Character, ClassId } from '../domain/types'
+import type { CharResource, Character, ClassId, Monster } from '../domain/types'
+import { t } from '../i18n'
 
 // Player sprite is class-flavored; companions use a friendly face.
 export const CLASS_EMOJI: Record<ClassId, string> = {
@@ -58,6 +59,56 @@ export function BattleSprite({
         <MiniBar value={res.hp} max={char.stats.maxHp} cls="hp" />
         <MiniBar value={res.mp} max={char.stats.maxMp} cls="mp" />
         <MiniBar value={Math.min(charge, 100)} max={100} cls="ct" />
+      </div>
+    </div>
+  )
+}
+
+/** One enemy in the on-field team: sprite + name/Lv + its own HP bar. Shows a defeated state at
+ *  hp≤0, a floating damage number, a current-target highlight, and (when onSelect is given and the
+ *  enemy is alive) is clickable to pick it as the step-through target. */
+export function EnemyCard({
+  enemy,
+  inQuest,
+  float,
+  isTarget,
+  active,
+  onSelect,
+}: {
+  enemy: Monster
+  inQuest: boolean
+  float?: { amount: number; key: number }
+  /** This enemy is the currently selected/auto target (highlighted). */
+  isTarget?: boolean
+  /** It's this enemy's CTB turn (parity with the party sprite highlight). */
+  active?: boolean
+  /** Click to target this enemy (only wired during an ally's step-through turn). */
+  onSelect?: (id: string) => void
+}) {
+  const name = enemy.displayName ?? t(enemy.nameKey)
+  const downed = enemy.hp <= 0
+  const pct = enemy.maxHp > 0 ? Math.max(0, Math.round((enemy.hp / enemy.maxHp) * 100)) : 0
+  const low = pct <= 30
+  const clickable = !downed && !!onSelect
+  return (
+    <div
+      className={`enemy-card ${downed ? 'defeated' : ''} ${isTarget ? 'current-target' : ''} ${active ? 'acting' : ''} ${clickable ? 'selectable' : ''}`}
+      onClick={clickable ? () => onSelect?.(enemy.id) : undefined}
+      role={clickable ? 'button' : undefined}
+      aria-pressed={clickable ? Boolean(isTarget) : undefined}
+      title={clickable ? `选择目标：${name}` : name}
+    >
+      <div className={`enemy-card-sprite ${low && !downed ? 'low' : ''}`} aria-hidden>
+        {downed ? '💀' : enemyEmoji(name, inQuest)}
+      </div>
+      <div className="enemy-card-shadow" aria-hidden />
+      {float && !downed && <div className="float" key={float.key}>-{float.amount}</div>}
+      <div className="enemy-card-name">
+        {name} <span className="enemy-card-lv">Lv.{enemy.level}</span>
+      </div>
+      <div className="hpbar enemy-card-hp">
+        <div className={`hpbar-fill ${low ? 'low' : ''}`} style={{ width: `${pct}%` }} />
+        <div className="hpbar-label">{downed ? '已击败' : `${enemy.hp} / ${enemy.maxHp}`}</div>
       </div>
     </div>
   )

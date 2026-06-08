@@ -3,6 +3,7 @@
 // via your own workflow. `lore` + the antagonist roster are the cacheable prefix for AI
 // generation; `storyChapters` are the canon spine (also the offline path). (§22)
 
+import { LOCAL_PACK } from '../content/localPack'
 import type { QuestBlueprint, WorldId } from '../domain/types'
 
 /** A canon antagonist for a world — becomes an encounter enemy and grounds the generator. */
@@ -116,8 +117,14 @@ const STARGAZERS: WorldDef = {
         {
           enemyName: '虚妄掮客', enemyTheme: '兜售完美计划、换走行动的掮客', antagonistId: 'mirage_broker',
           hpScale: 1.3, defScale: 1.1,
-          narrationIntro: '掮客摊开一卷宏图：「只要计划够完美，何必急于动手？」诺娃在耳机里说：「薇拉姐，灯光交给我。」',
+          narrationIntro: '掮客摊开一卷宏图：「只要计划够完美，何必急于动手？」两名护卫上前拦路，诺娃在耳机里说：「薇拉姐，灯光交给我。」',
           narrationVictory: '宏图散作泡影，被偷走的午后回到人们手中——是谁，把这些线索一条条引到我们面前？',
+          // A real TEAM encounter: the broker fights flanked by two escort mooks (lighter scaling so
+          // the fight stays winnable). Clears only when all three fall. (multi-enemy V1)
+          adds: [
+            { enemyName: '杂念哨兵', enemyTheme: '由犹豫与借口凝成的迷雾守卫', antagonistId: 'fog_sentry', hpScale: 0.7, defScale: 0.8 },
+            { enemyName: '空耗傀儡', enemyTheme: '由荒废的午后凝成的迟缓傀儡', antagonistId: 'idle_brute', hpScale: 0.8, defScale: 0.9 },
+          ],
         },
       ],
       reward: { equipmentDefIds: ['star_compass'], unlockCompanionIds: ['nova'], playerXp: 90 },
@@ -148,11 +155,14 @@ const STARGAZERS: WorldDef = {
   ],
 }
 
-export const WORLD_DEFS: Record<WorldId, WorldDef> = {
+const DEFAULT_WORLD_DEFS: Record<WorldId, WorldDef> = {
   stargazers: STARGAZERS,
 }
 
-export const FIRST_WORLD_ID: WorldId = 'stargazers'
+/** The active worlds — a local content pack (gitignored) overrides the shipped sample. */
+export const WORLD_DEFS: Record<WorldId, WorldDef> = LOCAL_PACK?.worlds ?? DEFAULT_WORLD_DEFS
+
+export const FIRST_WORLD_ID: WorldId = LOCAL_PACK?.firstWorldId ?? 'stargazers'
 
 /** The cacheable lore prefix fed to the storyline generator (incl. the antagonist roster). Pure. */
 export function renderWorldLore(world: WorldDef): string {

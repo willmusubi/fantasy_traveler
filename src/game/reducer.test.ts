@@ -28,7 +28,7 @@ function makeMonster(over: Partial<Monster> = {}): Monster {
 function makeInput(over: Partial<ReducerInput> = {}): ReducerInput {
   const gameState: GameState = {
     partyIds: ['player', 'mira'],
-    monster: makeMonster(),
+    enemies: [makeMonster()],
     storyStage: 0,
     buffs: [],
     moodFlags: {},
@@ -54,7 +54,7 @@ describe('gameReducer · TodoCompleted', () => {
   it('damages the monster, grants player XP, and raises affinity', () => {
     const r = gameReducer(makeInput(), { type: 'TodoCompleted', todo: todo('high') })
     // A speed-ordered round of INDIVIDUAL hits: 米拉 (atk20, faster) 40, then 旅人 (atk18) 35.
-    expect(r.gameState.monster.hp).toBe(400 - 40 - 35) // 325
+    expect(r.gameState.enemies[0].hp).toBe(400 - 40 - 35) // 325
     const dmgs = r.effects.filter((e) => e.type === 'damage')
     expect(dmgs.map((e) => (e.type === 'damage' ? e.amount : 0))).toEqual([40, 35])
     expect(dmgs[0]).toMatchObject({ amount: 40, monsterHpAfter: 360, actorId: 'mira' })
@@ -71,7 +71,7 @@ describe('gameReducer · TodoCompleted', () => {
   it('does not mutate the input game state', () => {
     const input = makeInput()
     gameReducer(input, { type: 'TodoCompleted', todo: todo('high') })
-    expect(input.gameState.monster.hp).toBe(400)
+    expect(input.gameState.enemies[0].hp).toBe(400)
   })
 
   it('grants affinity to EVERY on-field companion, not just the first', () => {
@@ -102,8 +102,8 @@ describe('gameReducer · TodoCompleted', () => {
 describe('gameReducer · TodoOverdue', () => {
   it('grows the monster and sets the companion worried', () => {
     const r = gameReducer(makeInput(), { type: 'TodoOverdue', todo: todo('high') })
-    expect(r.gameState.monster.maxHp).toBe(470) // +OVERDUE_HP_GROW 70
-    expect(r.gameState.monster.atk).toBe(16) // +OVERDUE_ATK_GROW 2
+    expect(r.gameState.enemies[0].maxHp).toBe(470) // +OVERDUE_HP_GROW 70
+    expect(r.gameState.enemies[0].atk).toBe(16) // +OVERDUE_ATK_GROW 2
     expect(r.gameState.moodFlags.mira).toBe('worried')
     expect(r.effects.find((e) => e.type === 'mood')).toMatchObject({ flag: 'worried' })
   })
@@ -120,9 +120,9 @@ describe('gameReducer · TaskTimerExpired', () => {
     // No growth, and the party never strikes the enemy (it's a free swing, not a round).
     expect(r.effects.some((e) => e.type === 'monsterGrew')).toBe(false)
     expect(r.effects.some((e) => e.type === 'damage')).toBe(false)
-    expect(r.gameState.monster.maxHp).toBe(400)
-    expect(r.gameState.monster.atk).toBe(14)
-    expect(r.gameState.monster.hp).toBe(400) // enemy untouched
+    expect(r.gameState.enemies[0].maxHp).toBe(400)
+    expect(r.gameState.enemies[0].atk).toBe(14)
+    expect(r.gameState.enemies[0].hp).toBe(400) // enemy untouched
   })
 
   it('sets the active companion worried', () => {
@@ -134,13 +134,13 @@ describe('gameReducer · TaskTimerExpired', () => {
   it('does not mutate the input game state', () => {
     const input = makeInput()
     gameReducer(input, { type: 'TaskTimerExpired', todo: todo('high') })
-    expect(input.gameState.monster.hp).toBe(400)
+    expect(input.gameState.enemies[0].hp).toBe(400)
     expect(input.gameState.resources).toEqual({})
   })
 
   it('triggers a wipe setback (revive + logged monster heal) when the hit fells the lone member', () => {
     const input = makeInput({ party: [PLAYER] })
-    input.gameState.monster = { ...input.gameState.monster, hp: 200 } // below max so the wipe-heal is visible
+    input.gameState.enemies[0] = { ...input.gameState.enemies[0], hp: 200 } // below max so the wipe-heal is visible
     input.gameState.resources = { player: { hp: 1, mp: 0 } }
     const r = gameReducer(input, { type: 'TaskTimerExpired', todo: todo('high') })
     const wiped = r.effects.find((e) => e.type === 'partyWiped')
@@ -157,7 +157,7 @@ describe('gameReducer · JournalWritten', () => {
   it('grants party-wide XP + companion affinity + a mood flag, and never touches the enemy', () => {
     const r = gameReducer(makeInput(), { type: 'JournalWritten', entry: journal('great') })
     // Reflection is NOT combat: the enemy is untouched, no enemy attack / damage / victory.
-    expect(r.gameState.monster.hp).toBe(400)
+    expect(r.gameState.enemies[0].hp).toBe(400)
     expect(r.effects.some((e) => e.type === 'damage' || e.type === 'enemyAttack' || e.type === 'victory')).toBe(false)
     // Party-wide XP (the whole on-field party, like a defeat — but small, and once per day).
     expect(r.effects.find((e) => e.type === 'charXp' && e.characterId === 'player')).toMatchObject({ amount: JOURNAL_XP })
@@ -212,15 +212,15 @@ describe('gameReducer · JournalWritten', () => {
 describe('gameReducer · victory', () => {
   it('fires a victory burst and spawns the next monster (idempotent)', () => {
     const input = makeInput({ gameState: {
-      partyIds: ['player', 'mira'], monster: makeMonster({ hp: 50 }), storyStage: 0,
+      partyIds: ['player', 'mira'], enemies: [makeMonster({ hp: 50 })], storyStage: 0,
       buffs: [], moodFlags: {}, lastResolvedAt: '',
       encounterIndex: 0, unlockedCompanionIds: ['mira'], ownedEquipment: [], resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {},
     } })
     const r = gameReducer(input, { type: 'TodoCompleted', todo: todo('high') })
     expect(r.effects.find((e) => e.type === 'victory')).toMatchObject({ storyStage: 1, defeatedMonsterId: 'm1' })
     expect(r.gameState.storyStage).toBe(1)
-    expect(r.gameState.monster.id).toBe('m-next')
-    expect(r.gameState.defeatedMonsterId).toBe('m1')
+    expect(r.gameState.enemies[0].id).toBe('m-next')
+    expect(r.gameState.clearedEncounterKey).toBe('endless:0:m1')
     // defeat XP burst present for the party, scaled to the enemy (in addition to chip XP)
     const defeatXp = defeatRewards(makeMonster({ hp: 50 })).xp
     const xpBurst = r.effects.filter((e) => e.type === 'charXp')
@@ -231,10 +231,10 @@ describe('gameReducer · victory', () => {
     expect(aff).toBe(5 + VICTORY_AFFINITY) // completion +5, victory +20, within daily cap 30
   })
 
-  it('does not double-fire victory for an already-defeated monster id', () => {
+  it('does not double-fire victory for an already-cleared encounter key', () => {
     const input = makeInput({ gameState: {
-      partyIds: ['player', 'mira'], monster: makeMonster({ id: 'm1', hp: 50 }), storyStage: 3,
-      defeatedMonsterId: 'm1', buffs: [], moodFlags: {}, lastResolvedAt: '',
+      partyIds: ['player', 'mira'], enemies: [makeMonster({ id: 'm1', hp: 50 })], storyStage: 3,
+      clearedEncounterKey: 'endless:0:m1', buffs: [], moodFlags: {}, lastResolvedAt: '',
       encounterIndex: 0, unlockedCompanionIds: ['mira'], ownedEquipment: [], resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {},
     } })
     const r = gameReducer(input, { type: 'TodoCompleted', todo: todo('high') })
@@ -260,7 +260,7 @@ function questInput(encounterIndex: number, monsterOver: Partial<Monster> = {}) 
   return makeInput({
     quest,
     gameState: {
-      partyIds: ['player', 'mira'], monster: makeMonster({ hp: 50, ...monsterOver }), storyStage: 0,
+      partyIds: ['player', 'mira'], enemies: [makeMonster({ hp: 50, ...monsterOver })], storyStage: 0,
       buffs: [], moodFlags: {}, lastResolvedAt: '',
       encounterIndex, unlockedCompanionIds: ['mira'], ownedEquipment: [], resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {},
       activeWorldId: 'stargazers', activeQuestId: 'q1',
@@ -272,7 +272,7 @@ describe('gameReducer · quest-driven combat', () => {
   it('clearing a non-final encounter advances to the next', () => {
     const r = gameReducer(questInput(0), { type: 'TodoCompleted', todo: todo('high') })
     expect(r.gameState.encounterIndex).toBe(1)
-    expect(r.gameState.monster.displayName).toBe('敌人2')
+    expect(r.gameState.enemies[0].displayName).toBe('敌人2')
     expect(r.effects.find((e) => e.type === 'encounterCleared')).toMatchObject({ encounterIndex: 0, nextEnemy: '敌人2' })
     expect(r.effects.find((e) => e.type === 'questCompleted')).toBeUndefined()
     expect(r.gameState.activeQuestId).toBe('q1')
@@ -301,7 +301,7 @@ describe('gameReducer · habit buffs (untilVictory)', () => {
   const withBuffs = (monsterOver: Partial<Monster>): ReducerInput =>
     makeInput({
       gameState: {
-        partyIds: ['player', 'mira'], monster: makeMonster(monsterOver), storyStage: 0,
+        partyIds: ['player', 'mira'], enemies: [makeMonster(monsterOver)], storyStage: 0,
         buffs: [], moodFlags: {}, lastResolvedAt: '', encounterIndex: 0, unlockedCompanionIds: ['mira'],
         ownedEquipment: [], resources: {}, gold: 0,
         partyBuffs: [
@@ -322,7 +322,7 @@ describe('gameReducer · habit buffs (untilVictory)', () => {
   it('without a victory, decay leaves untilVictory buffs untouched but expires a skill buff', () => {
     const input = makeInput({
       gameState: {
-        partyIds: ['player', 'mira'], monster: makeMonster({ hp: 4000 }), storyStage: 0, // tanky → no victory
+        partyIds: ['player', 'mira'], enemies: [makeMonster({ hp: 4000 })], storyStage: 0, // tanky → no victory
         buffs: [], moodFlags: {}, lastResolvedAt: '', encounterIndex: 0, unlockedCompanionIds: ['mira'],
         ownedEquipment: [], resources: {}, gold: 0,
         partyBuffs: [

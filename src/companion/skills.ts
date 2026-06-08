@@ -2,6 +2,7 @@
 // design. Skills are ACTIVE: cast from the battle-stage skill bar, gated by MP (and sometimes
 // HP), unlocked by character level. (§8, §21)
 
+import { LOCAL_PACK } from '../content/localPack'
 import type { Character, SkillId } from '../domain/types'
 
 export interface SkillDef {
@@ -24,7 +25,7 @@ export interface SkillDef {
   desc: string
 }
 
-export const SKILL_DEFS: Record<SkillId, SkillDef> = {
+const DEFAULT_SKILL_DEFS: Record<SkillId, SkillDef> = {
   // 米拉 — Striker (fast physical bursts)
   liuguang: { id: 'liuguang', nameKey: 'skill.liuguang', kind: 'attack', power: 1.2, target: 'enemy', mpCost: 8, unlockLevel: 1, desc: '迅捷的流光一击，对当前敌人造成一次物理伤害。' },
   xingchen: { id: 'xingchen', nameKey: 'skill.xingchen', kind: 'attack', power: 1.5, target: 'enemy', mpCost: 12, unlockLevel: 3, desc: '连环星尘斩，造成更高的物理伤害。' },
@@ -41,6 +42,9 @@ export const SKILL_DEFS: Record<SkillId, SkillDef> = {
   shouwang: { id: 'shouwang', nameKey: 'skill.shouwang', kind: 'buff', power: 0.2, target: 'allAllies', mpCost: 16, unlockLevel: 6, desc: '星空守望，接下来 3 次完成任务时全队攻击 +20%。' },
   mantian: { id: 'mantian', nameKey: 'skill.mantian', kind: 'heal', power: 2.2, target: 'allAllies', mpCost: 30, unlockLevel: 10, desc: '专属大招·满天星：为全队恢复大量 HP。' },
 }
+
+/** The active skill catalog — a local content pack (gitignored) overrides the shipped sample. */
+export const SKILL_DEFS: Record<SkillId, SkillDef> = LOCAL_PACK?.skills ?? DEFAULT_SKILL_DEFS
 
 /** Every skill the character owns (regardless of level). */
 export function allSkillsOf(char: Character): SkillDef[] {

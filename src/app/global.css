@@ -320,7 +320,26 @@ input, select, textarea { font-family: inherit; }
   box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.06);
 }
 .party-side { position: absolute; left: 5%; bottom: 12%; display: flex; gap: 20px; align-items: flex-end; z-index: 2; }
-.enemy-side { position: absolute; right: 9%; bottom: 14%; z-index: 2; text-align: center; }
+.enemy-side { position: absolute; right: 6%; bottom: 14%; z-index: 2; display: flex; gap: 12px; align-items: flex-end; justify-content: flex-end; }
+
+/* One on-field enemy (multi-enemy team): sprite + name + its own compact HP bar. */
+.enemy-card { position: relative; width: 88px; text-align: center; animation: bob 2.8s ease-in-out infinite; }
+.enemy-card:nth-child(2) { animation-delay: 0.5s; }
+.enemy-card:nth-child(3) { animation-delay: 1s; }
+.enemy-card-sprite { font-size: 58px; line-height: 1; filter: drop-shadow(0 5px 0 rgba(0, 0, 0, 0.45)); }
+.enemy-card-sprite.low { animation: hurt 1.6s steps(2) infinite; }
+.enemy-card-shadow { width: 52px; height: 11px; margin: 1px auto 4px; border-radius: 50%; background: radial-gradient(ellipse, rgba(0, 0, 0, 0.5), transparent 70%); }
+.enemy-card-name { font-family: var(--font-pixel); font-size: 10px; color: var(--ink); text-shadow: 1px 1px 0 var(--outline); white-space: nowrap; margin-bottom: 4px; }
+.enemy-card-lv { color: var(--gold); }
+.enemy-card-hp { height: 13px; }
+.enemy-card-hp .hpbar-label { font-size: 9px; }
+.enemy-card.defeated { opacity: 0.45; filter: grayscale(0.8); animation: none; }
+.enemy-card.acting { filter: drop-shadow(0 0 8px rgba(244, 198, 78, 0.85)); }
+.enemy-card.acting .enemy-card-name { color: var(--gold); }
+.enemy-card.selectable { cursor: pointer; }
+.enemy-card.selectable:hover { filter: brightness(1.08); }
+.enemy-card.current-target { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 8px; }
+.enemy-card.current-target .enemy-card-name { color: var(--gold); }
 
 .bsprite { width: 66px; text-align: center; animation: bob 3.4s ease-in-out infinite; }
 .bsprite:nth-child(2) { animation-delay: 0.6s; }
@@ -461,6 +480,15 @@ input, select, textarea { font-family: inherit; }
 .tp-title { font-family: var(--font-pixel); font-size: 11px; color: var(--ink-dim); text-shadow: 1px 1px 0 var(--outline); }
 .tp-title b { color: var(--gold); }
 .tp-auto { font-size: 12px; padding: 4px 11px; flex: none; }
+/* Target picker row (multi-enemy): pick which enemy this ally hits. */
+.target-row { display: flex; align-items: center; flex-wrap: wrap; gap: 7px; margin-top: 9px; }
+.target-row-label { font-family: var(--font-pixel); font-size: 10px; color: var(--gold); text-shadow: 1px 1px 0 var(--outline); }
+.target-btn { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; cursor: pointer; color: var(--ink); background: linear-gradient(180deg, rgba(239, 90, 76, 0.22), rgba(120, 30, 30, 0.22)); border: 1px solid rgba(239, 90, 76, 0.5); }
+.target-btn:hover { filter: brightness(1.1); }
+.target-btn.selected { border-color: var(--gold); background: linear-gradient(180deg, rgba(244, 198, 78, 0.3), rgba(199, 154, 53, 0.3)); box-shadow: 0 0 0 2px rgba(244, 198, 78, 0.5); }
+.target-btn-name { font-size: 11px; }
+.target-btn-hp { font-family: var(--font-pixel); font-size: 9px; color: var(--ink-dim); }
+.target-btn.selected .target-btn-hp { color: var(--gold); }
 .bsprite.acting { filter: drop-shadow(0 0 7px rgba(244, 198, 78, 0.85)); }
 .bsprite.acting .bsprite-name { color: var(--gold); }
 /* "默认行动" launcher (idle) + the defaults editor popup (reuses .modal / .plan-bar). */
@@ -913,6 +941,10 @@ input, select, textarea { font-family: inherit; }
   .party-side { gap: 12px; left: 6%; }
   .bsprite { width: 54px; }
   .bsprite-body { font-size: 32px; }
+  .enemy-side { gap: 7px; right: 4%; }
+  .enemy-card { width: 64px; }
+  .enemy-card-sprite { font-size: 42px; }
+  .enemy-card-name { font-size: 9px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

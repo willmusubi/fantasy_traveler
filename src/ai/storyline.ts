@@ -45,6 +45,8 @@ export function coerceQuest(
   const encounters = rawEnc.slice(0, 4).map((raw) => {
     const e = (raw ?? {}) as Record<string, unknown>
     const enemyName = str(e.enemyName, defaultEnemy, 40)
+    // NOTE: multi-enemy `adds` are NOT parsed here in V1 — AI-generated encounters stay single-enemy.
+    // (Future: parse + clamp e.adds with the same byName/clamp helpers to allow generated teams.)
     return {
       enemyName,
       enemyTheme: str(e.enemyTheme, '', 80),

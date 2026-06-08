@@ -25,7 +25,7 @@ const affinity: Affinity = { characterId: 'mira', points: 90, rank: 'C', unlocke
 const journal: JournalEntry = { id: 'j1', date: '2026-06-03', mood: 'good', body: '测试日记', createdAt: '2026-06-03' }
 const gameState: GameState = {
   partyIds: ['p', 'mira'],
-  monster: { id: 'm', nameKey: 'monster.procrastination', level: 1, maxHp: 400, hp: 400, atk: 14, def: 10, spd: 9, growth: 1 },
+  enemies: [{ id: 'm', nameKey: 'monster.procrastination', level: 1, maxHp: 400, hp: 400, atk: 14, def: 10, spd: 9, growth: 1 }],
   storyStage: 2, buffs: [], moodFlags: {}, lastResolvedAt: '', encounterIndex: 0,
   unlockedCompanionIds: ['mira'], ownedEquipment: [], resources: {}, gold: 42, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {},
 }

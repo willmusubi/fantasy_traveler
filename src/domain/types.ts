@@ -217,6 +217,19 @@ export interface EncounterSpec {
   defScale: number // ~0.8–1.4
   narrationIntro: string
   narrationVictory: string
+  /** Escort enemies spawned alongside the primary — this encounter becomes a TEAM. Optional →
+   *  back-compat: an encounter with no `adds` is a single enemy exactly as before. Each add carries
+   *  its own scaling knobs. Authored statically (AI-generated quests do not populate this in V1). */
+  adds?: EncounterAdd[]
+}
+
+/** One escort enemy in a team encounter (the primary's fields live on EncounterSpec). */
+export interface EncounterAdd {
+  enemyName: string
+  enemyTheme: string
+  antagonistId?: string
+  hpScale: number
+  defScale: number
 }
 
 export interface QuestReward {
@@ -308,14 +321,14 @@ export interface TurnActor {
  *  by the combat log). Lives here (rather than in the reducer) so GameState.activeRound can
  *  reference it without a domain→game import. */
 export type GameEffect =
-  | { type: 'damage'; amount: number; monsterHpAfter: number; actorId: ID; fromSkill?: boolean }
+  | { type: 'damage'; amount: number; monsterHpAfter: number; actorId: ID; targetId: ID; fromSkill?: boolean }
   | { type: 'monsterGrew'; hpDelta: number; atkDelta: number }
   | { type: 'affinity'; characterId: ID; amount: number; rankedUpTo: string | null }
   | { type: 'charXp'; characterId: ID; amount: number; levelsGained: number }
   | { type: 'victory'; defeatedMonsterId: ID; storyStage: number; nextEnemyHp?: number }
   | { type: 'mood'; characterId: ID; flag: MoodFlag }
   // Active combat (skills / enemy turn-attacks / resources)
-  | { type: 'skillCast'; skillId: SkillId; casterId: ID; skillKind: 'attack' | 'heal' | 'buff' | 'debuff'; amount: number; monsterHpAfter?: number }
+  | { type: 'skillCast'; skillId: SkillId; casterId: ID; skillKind: 'attack' | 'heal' | 'buff' | 'debuff'; amount: number; monsterHpAfter?: number; targetId?: ID }
   | { type: 'heal'; targetId: ID; amount: number }
   | { type: 'enemyAttack'; targetId: ID; amount: number }
   | { type: 'downed'; characterId: ID }
@@ -344,20 +357,24 @@ export interface ActiveRound {
   actedFirstTurn: ID[]
   /** Combat effects accumulated across steps → built into one combat-log entry at finalize. */
   effects: GameEffect[]
-  /** gold + enemy snapshots at round start (for the finalize combat-log line). */
+  /** gold + enemy-team snapshots at round start (for the finalize combat-log line). */
   goldAtStart: number
-  enemyAtStart: Monster
+  enemiesAtStart: Monster[]
   /** The todo whose completion owns this round. */
   todoId: ID
 }
 
 export interface GameState {
   partyIds: ID[] // player + companions; partyIds[0]=player, partyIds[1]=lead; ≤6
-  monster: Monster
+  /** @deprecated migration-only — read via gs.enemies. Backfilled into enemies[0] then collapsed. */
+  monster?: Monster
+  /** Source of truth for the current encounter's enemy team. enemies[0] = primary/boss; rest = adds. */
+  enemies: Monster[]
   /** Monotonic difficulty dial feeding spawnMonster (NOT the narrative pointer). */
   storyStage: number
-  /** id of the last monster whose defeat burst was applied (idempotent defeat). */
-  defeatedMonsterId?: ID
+  /** Idempotent guard for the WHOLE-TEAM clear payout: `${activeQuestId ?? 'endless'}:${encounterIndex}`.
+   *  Set when an encounter's clear cascade fires; checked before re-firing (replaces defeatedMonsterId). */
+  clearedEncounterKey?: ID
   buffs: Buff[]
   /** companionId -> current mood flag */
   moodFlags: Record<ID, MoodFlag>

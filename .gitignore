@@ -39,6 +39,11 @@ docs/avator-pics/
 public/portraits/*.png
 public/portraits-px/
 public/art/
+
+# --- Local content override (personal / licensed cast + story). The shipped content is an
+#     ORIGINAL IP-free sample; a gitignored pack here swaps it in locally. See src/content/README.md.
+#     Never committed — keeps the public repo IP-free. ---
+src/content/local/
 public/sprites/
 
 # Python caches (from local art tooling)

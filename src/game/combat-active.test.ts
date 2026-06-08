@@ -29,7 +29,7 @@ function makeMonster(over: Partial<Monster> = {}): Monster {
 function makeInput(party: Character[], gsOver: Partial<GameState> = {}): ReducerInput {
   const gameState: GameState = {
     partyIds: party.map((c) => c.id),
-    monster: makeMonster(),
+    enemies: [makeMonster()],
     storyStage: 0, buffs: [], moodFlags: {}, lastResolvedAt: '',
     encounterIndex: 0, unlockedCompanionIds: party.filter((c) => c.kind === 'companion').map((c) => c.id),
     ownedEquipment: [], resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {},
@@ -68,7 +68,7 @@ describe('active combat — enemy attack, resources, gold', () => {
   it('earns gold on completion, plus a victory bonus on a kill', () => {
     const chip = gameReducer(makeInput([PLAYER, MIRA]), todo('high')).gameState.gold
     expect(chip).toBe(GOLD_TODO.high) // small per-task chip
-    const kill = gameReducer(makeInput([PLAYER, MIRA], { monster: makeMonster({ hp: 50 }) }), todo('high'))
+    const kill = gameReducer(makeInput([PLAYER, MIRA], { enemies: [makeMonster({ hp: 50 })] }), todo('high'))
     expect(kill.gameState.gold).toBeGreaterThan(chip) // a defeated enemy pays a big bonus on top
   })
 
@@ -79,12 +79,12 @@ describe('active combat — enemy attack, resources, gold', () => {
   })
 
   it('all members downed → setback (revive low + enemy recovers)', () => {
-    const input = makeInput([PLAYER, MIRA], { resources: { player: { hp: 0, mp: 10 }, mira: { hp: 0, mp: 10 } }, monster: makeMonster({ hp: 100 }) })
+    const input = makeInput([PLAYER, MIRA], { resources: { player: { hp: 0, mp: 10 }, mira: { hp: 0, mp: 10 } }, enemies: [makeMonster({ hp: 100 })] })
     const overdue: DomainEvent = { type: 'TodoOverdue', todo: { id: 't', title: 't', priority: 'high', status: 'open', tags: [], createdAt: TODAY } }
     const r = gameReducer(input, overdue)
     expect(r.effects.some((e) => e.type === 'partyWiped')).toBe(true)
     expect(r.gameState.resources.player.hp).toBeGreaterThan(0) // revived
-    expect(r.gameState.monster.hp).toBeGreaterThan(100) // grew (overdue) + recovered (wipe)
+    expect(r.gameState.enemies[0].hp).toBeGreaterThan(100) // grew (overdue) + recovered (wipe)
   })
 
   it('a charged-up fast member laps for a BONUS hit — without stealing the slow member’s turn', () => {
@@ -95,7 +95,7 @@ describe('active combat — enemy attack, resources, gold', () => {
     expect(dmgs).toHaveLength(3) // 米拉 ×2 (lap) + 旅人 ×1
     expect(dmgs.filter((e) => e.type === 'damage' && e.actorId === 'mira')).toHaveLength(2)
     expect(dmgs.filter((e) => e.type === 'damage' && e.actorId === 'player')).toHaveLength(1)
-    expect(r.gameState.monster.hp).toBe(400 - 40 - 40 - 35) // 米拉 40+40, 旅人 35
+    expect(r.gameState.enemies[0].hp).toBe(400 - 40 - 40 - 35) // 米拉 40+40, 旅人 35
   })
 })
 
@@ -108,7 +108,7 @@ describe('active combat — planned skills (executed when a task completes)', ()
     const r = gameReducer(input, todo('low'))
     // liuguang: mira atk 20 * 1.2 * 3 − def 10 = 62 (skills are NOT priority-scaled).
     expect(r.effects.find((e) => e.type === 'skillCast')).toMatchObject({ skillKind: 'attack', amount: 62 })
-    expect(r.gameState.monster.hp).toBe(400 - 62) // single member → only the skill hit lands on the monster
+    expect(r.gameState.enemies[0].hp).toBe(400 - 62) // single member → only the skill hit lands on the monster
     expect(r.gameState.resources.mira.mp).toBe(20 - 8 + MP_REGEN_TODO.low) // cast −8, then low regen +6
   })
 
@@ -131,7 +131,7 @@ describe('active combat — planned skills (executed when a task completes)', ()
   it('a planned debuff skill lowers the enemy defense', () => {
     const VELA = char('tactician', 'companion', 'vela')
     const r = gameReducer(makeInput([VELA], { roundPlan: plan({ vela: 'xingmang' }) }), todo('low'))
-    expect(r.gameState.monster.def).toBe(Math.round(10 * (1 - 0.3))) // 7
+    expect(r.gameState.enemies[0].def).toBe(Math.round(10 * (1 - 0.3))) // 7
   })
 
   it('a planned magic attack skill scales off the caster mag, not atk', () => {
@@ -140,7 +140,7 @@ describe('active combat — planned skills (executed when a task completes)', ()
     // mag 20 * 1.4 * 3 − def 10 = 74 (would be 49 if it wrongly scaled off atk 14). The skillCast
     // amount is the definitive proof; VELA also laps a basic attack, so monster.hp drops by a bit more.
     expect(r.effects.find((e) => e.type === 'skillCast')).toMatchObject({ skillKind: 'attack', amount: 74 })
-    expect(r.gameState.monster.hp).toBeLessThanOrEqual(400 - 74)
+    expect(r.gameState.enemies[0].hp).toBeLessThanOrEqual(400 - 74)
   })
 
   it('a planned buff fires only when the skill is unlocked by level', () => {
