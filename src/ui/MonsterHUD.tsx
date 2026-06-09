@@ -174,9 +174,11 @@ export function MonsterHUD() {
             const debuff = b.magnitude < 0
             const pct = Math.round(Math.abs(b.magnitude) * 100)
             const name = b.label ?? BUFF_KIND_LABEL[b.kind]
+            const sign = debuff ? '−' : '+'
+            const title = `${name}：全队${BUFF_KIND_LABEL[b.kind]} ${sign}${pct}%${b.untilVictory ? '（持续到下一场战斗胜利）' : ''}`
             return (
-              <span key={b.id} className={`buff-badge ${debuff ? 'debuff' : ''}`} title={b.untilVictory ? '持续到下一场战斗胜利' : '战斗增益'}>
-                {name} {debuff ? '−' : '+'}{pct}%
+              <span key={b.id} className={`buff-badge ${debuff ? 'debuff' : ''}`} title={title}>
+                {name} {sign}{pct}%
               </span>
             )
           })}

@@ -4,7 +4,7 @@ import type { Character, GameState } from '../domain/types'
 import { resourceOf } from '../game/resources'
 import { t } from '../i18n'
 import { selectPlayer, useGame } from '../state/gameStore'
-import { activeSynergiesFor } from '../world/relationships'
+import { activeSynergiesFor, synergyBonusText } from '../world/relationships'
 import { CharacterSheet } from './CharacterSheet'
 
 const MAX_PARTY = 6
@@ -71,8 +71,12 @@ export function PartyPanel() {
       {synergies.length > 0 && (
         <div className="synergy-badges">
           {synergies.map((s) => (
-            <span key={s.id} className="synergy-badge" title={s.requires.map((id) => nameOf(id, characters)).join(' + ')}>
-              ✦ {t(s.labelKey)}
+            <span
+              key={s.id}
+              className="synergy-badge"
+              title={`${s.requires.map((id) => nameOf(id, characters)).join(' + ')} —— ${synergyBonusText(s.bonus)}（全队生效，叠加）`}
+            >
+              ✦ {t(s.labelKey)} <span className="synergy-eff">{synergyBonusText(s.bonus)}</span>
             </span>
           ))}
         </div>

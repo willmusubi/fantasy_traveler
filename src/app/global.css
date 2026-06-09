@@ -849,6 +849,8 @@ input, select, textarea { font-family: inherit; }
 .shop-buy { font-size: 11px; padding: 6px 11px; white-space: nowrap; }
 .synergy-badges { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
 .synergy-badge { font-family: var(--font-pixel); font-size: 11px; color: var(--affinity); border: 2px solid var(--frame-gold); border-radius: 999px; padding: 4px 10px; box-shadow: 0 0 0 2px var(--outline); background: rgba(240, 143, 192, 0.1); }
+/* Inline effect so the synergy is self-explanatory (and the same-named pairs are told apart). */
+.synergy-eff { color: var(--ink); opacity: 0.82; font-size: 10px; margin-left: 3px; }
 
 /* ---------- Quest board ---------- */
 .quest-world-tag { font-size: 12px; color: var(--ink-dim); margin-bottom: 10px; }
@@ -992,7 +994,7 @@ input, select, textarea { font-family: inherit; }
 .habit-edit-actions { display: flex; gap: 9px; }
 
 /* ---------- Party buffs / debuffs ---------- */
-.buff-band { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 0 2px; }
+.buff-band { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 17px 2px; }
 .buff-badge {
   font-family: var(--font-pixel); font-size: 10px; color: var(--gold);
   border: 2px solid var(--frame-gold); border-radius: 999px; padding: 3px 9px;

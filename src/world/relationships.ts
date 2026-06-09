@@ -71,3 +71,14 @@ export function activeSynergiesFor(partyCompanionIds: string[]): SynergyDef[] {
   const set = new Set(partyCompanionIds)
   return SYNERGY_DEFS.filter((s) => s.requires.every((id) => set.has(id)))
 }
+
+/** Human-readable effect of a synergy's bonus (e.g. "攻击 +8% · 速度 +10%") — for badges + tooltips.
+ *  Data-driven from the bonus numbers, so it works for any content pack. */
+export function synergyBonusText(b: SynergyBonus): string {
+  const parts: string[] = []
+  if (b.atkPct) parts.push(`攻击 +${Math.round(b.atkPct * 100)}%`)
+  if (b.flatAtk) parts.push(`攻击 +${b.flatAtk}`)
+  if (b.defPct) parts.push(`防御 +${Math.round(b.defPct * 100)}%`)
+  if (b.spdPct) parts.push(`速度 +${Math.round(b.spdPct * 100)}%`)
+  return parts.join(' · ') || '暂无加成'
+}
