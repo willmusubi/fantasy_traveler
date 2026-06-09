@@ -1,13 +1,17 @@
-import { useEffect, useState } from 'react'
+import { lazy, Suspense, useEffect, useState } from 'react'
 import { useChat } from '../state/chatStore'
-import { useGame } from '../state/gameStore'
+import { registerSavedDungeonScripts, useGame } from '../state/gameStore'
 import { useHabits } from '../state/habitStore'
 import { useJournal } from '../state/journalStore'
 import { useSettings } from '../state/settingsStore'
 import { useTodos } from '../state/todoStore'
-import { Dashboard } from './Dashboard'
 import { ErrorBoundary } from '../ui/ErrorBoundary'
 import { Onboarding } from '../ui/Onboarding'
+
+// The Dashboard pulls in the whole gameplay tree (battle HUD, all panels + modals, combat).
+// A first-run player only sees Onboarding, so split the Dashboard into its own async chunk —
+// new users no longer download the gameplay code on first paint.
+const Dashboard = lazy(() => import('./Dashboard').then((m) => ({ default: m.Dashboard })))
 
 export function App() {
   const [booted, setBooted] = useState(false)
@@ -27,6 +31,7 @@ export function App() {
       try {
         await useSettings.getState().hydrate()
         await useGame.getState().hydrate()
+        await registerSavedDungeonScripts() // §23: make saved 副本 scripts runtime-resolvable
         await useTodos.getState().hydrate()
         await useHabits.getState().hydrate()
         await useJournal.getState().hydrate()
@@ -89,7 +94,19 @@ export function App() {
 
   return (
     <ErrorBoundary label="幻想旅人">
-      {!gameState ? <Onboarding /> : <Dashboard />}
+      {!gameState ? (
+        <Onboarding />
+      ) : (
+        <Suspense
+          fallback={
+            <main style={{ display: 'grid', placeItems: 'center', minHeight: '100vh', color: '#9b91b8' }}>
+              加载中…
+            </main>
+          }
+        >
+          <Dashboard />
+        </Suspense>
+      )}
     </ErrorBoundary>
   )
 }

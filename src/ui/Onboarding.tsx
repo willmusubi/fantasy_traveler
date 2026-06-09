@@ -73,16 +73,13 @@ export function Onboarding() {
           </div>
         </div>
 
-        <div className="modal-actions">
-          <button className="btn btn-primary" disabled={busy} onClick={start}>
+        <div className="onboard-actions">
+          <button className="btn btn-primary onboard-start" disabled={busy} onClick={start}>
             {busy ? '进入中…' : '开始冒险'}
           </button>
-        </div>
-
-        <div style={{ textAlign: 'center', marginTop: 14 }}>
           <button
             type="button"
-            className="btn btn-ghost"
+            className="onboard-import"
             disabled={busy || importing}
             onClick={() => fileRef.current?.click()}
           >

@@ -20,7 +20,7 @@ const MOOD_VAR: Record<Mood, string> = {
 
 /** Authoring for one day's journal: mood + optional title + body. On save it pays the
  *  reflection reward (via the store) and surfaces the lead companion's reaction inline —
- *  the felt reward, since the game-zone CompanionCard isn't mounted here. */
+ *  the felt reward, since the game-zone party UI isn't mounted here. */
 export function JournalComposer({ date }: { date: string }) {
   const add = useJournal((s) => s.add)
   const [mood, setMood] = useState<Mood>('neutral')

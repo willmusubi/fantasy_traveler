@@ -28,7 +28,7 @@ function makeInput(gsOver: Partial<GameState> = {}): ReducerInput {
   const gameState: GameState = {
     partyIds: ['player', 'mira'], enemies: [makeMonster()], storyStage: 0, buffs: [], moodFlags: {},
     lastResolvedAt: '', encounterIndex: 0, unlockedCompanionIds: ['mira'], ownedEquipment: [],
-    resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {}, ...gsOver,
+    resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {}, scriptFlags: {}, completedScriptIds: [], ...gsOver,
   }
   const affinities: Record<string, Affinity> = { mira: freshAffinity('mira', TODAY) }
   return { gameState, affinities, party: PARTY, now: NOW, newId: () => 'm-next', openHighCount: 0 }

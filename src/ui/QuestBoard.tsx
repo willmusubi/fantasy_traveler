@@ -4,7 +4,7 @@ import { useGame } from '../state/gameStore'
 import { useQuest } from '../state/questStore'
 import { useSettings } from '../state/settingsStore'
 import { EQUIPMENT_DEFS } from '../world/equipment'
-import { WORLD_DEFS } from '../world/worlds'
+import { scriptDefFor, WORLD_DEFS } from '../world/worlds'
 
 export function QuestBoard() {
   const worldId = useGame((s) => s.gameState?.activeWorldId)
@@ -13,6 +13,8 @@ export function QuestBoard() {
   const usedFallback = useQuest((s) => s.usedFallback)
   const quest = useGame((s) => s.activeQuest)
   const startQuest = useQuest((s) => s.startQuest)
+  const startScript = useQuest((s) => s.startScript)
+  const completedScriptIds = useGame((s) => s.gameState?.completedScriptIds)
   const hasKey = useSettings((s) => Boolean(s.settings.apiKey))
 
   const worlds = Object.values(WORLD_DEFS)
@@ -27,12 +29,17 @@ export function QuestBoard() {
   }
 
   const generating = status === 'generating'
+  // §24: a world's default campaign that has already been cleared shows 已通过 instead of silently
+  // relaunching; replay is an explicit choice that calls startScript directly (bypassing startQuest).
+  const defaultScriptId = world.defaultScriptId
+  const scriptDone = !!defaultScriptId && (completedScriptIds ?? []).includes(defaultScriptId)
+  const scriptTitle = defaultScriptId ? (scriptDefFor(defaultScriptId)?.title ?? world.name) : world.name
 
   return (
     <div className="panel">
       <div className="panel-title">
         <span>剧情副本</span>
-        <span>{world.name}</span>
+        <span>{world.name}{scriptDone && ' · ✓ 已通过'}</span>
       </div>
 
       <div className="world-picker">
@@ -86,6 +93,17 @@ export function QuestBoard() {
           <div className="quest-hint">完成现实任务，向副本中的心魔发起攻击。</div>
           <button className="btn btn-ghost" disabled={generating} onClick={() => startQuest(world.id)}>
             {generating ? '生成中…' : '重新生成'}
+          </button>
+        </div>
+      ) : scriptDone ? (
+        <div className="quest-empty">
+          <p>✦ 「{scriptTitle}」已通过。这段战役你已走到结局——若想重温，可重新开始；更多剧本，敬请期待。</p>
+          <button
+            className="btn btn-primary"
+            disabled={generating}
+            onClick={() => void startScript(world.id, defaultScriptId!)}
+          >
+            {generating ? '正在生成剧情…' : '重新开始这段剧本'}
           </button>
         </div>
       ) : (

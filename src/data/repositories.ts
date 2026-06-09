@@ -7,6 +7,7 @@ import type {
   Character,
   ChatMessage,
   ChatThread,
+  DungeonRecord,
   GameState,
   Habit,
   JournalEntry,
@@ -111,6 +112,10 @@ export function withGameStateDefaults(s: GameState): GameState {
   return {
     ...s,
     encounterIndex: s.encounterIndex ?? 0,
+    activeScriptId: s.activeScriptId, // §23: undefined on legacy saves → linear path (back-compat)
+    currentChapterId: s.currentChapterId,
+    scriptFlags: s.scriptFlags ?? {}, // §23: missing = no flags set yet
+    completedScriptIds: s.completedScriptIds ?? [], // §24: missing on pre-§24 saves = nothing cleared yet
     unlockedCompanionIds: s.unlockedCompanionIds ?? s.partyIds.filter((id) => id !== player),
     ownedEquipment: s.ownedEquipment ?? [],
     resources: s.resources ?? {}, // missing per-char entry = full
@@ -151,6 +156,29 @@ export const questsRepo = {
   },
   async put(q: Quest): Promise<void> {
     await (await getDB()).put('quests', q)
+  },
+}
+
+/** §23: saved replayable 副本 (frozen ScriptDef snapshots). Mirrors questsRepo. */
+export const dungeonsRepo = {
+  async all(): Promise<DungeonRecord[]> {
+    const db = await getDB()
+    // Tolerate a DB that reached v4 without this store (concurrent-session version collision)
+    // so boot doesn't hard-crash; the v5 upgrade backfills the store on next open.
+    if (!db.objectStoreNames.contains('dungeons')) return []
+    return db.getAll('dungeons')
+  },
+  async get(id: string): Promise<DungeonRecord | undefined> {
+    return (await getDB()).get('dungeons', id)
+  },
+  async byWorld(worldId: string): Promise<DungeonRecord[]> {
+    return (await getDB()).getAllFromIndex('dungeons', 'by_world', worldId)
+  },
+  async put(d: DungeonRecord): Promise<void> {
+    await (await getDB()).put('dungeons', d)
+  },
+  async delete(id: string): Promise<void> {
+    await (await getDB()).delete('dungeons', id)
   },
 }
 

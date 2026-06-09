@@ -23,7 +23,7 @@ function makeInput(party: Character[], enemies: Monster[], gsOver: Partial<GameS
   const gameState: GameState = {
     partyIds: party.map((c) => c.id), enemies, storyStage: 0, buffs: [], moodFlags: {}, lastResolvedAt: '',
     encounterIndex: 0, unlockedCompanionIds: party.filter((c) => c.kind === 'companion').map((c) => c.id),
-    ownedEquipment: [], resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {}, ...gsOver,
+    ownedEquipment: [], resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {}, scriptFlags: {}, completedScriptIds: [], ...gsOver,
   }
   const affinities: Record<string, Affinity> = {}
   for (const c of party) if (c.kind === 'companion') affinities[c.id] = freshAffinity(c.id, TODAY)

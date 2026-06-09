@@ -1,10 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { VictorySummary } from '../state/gameStore'
 import { useGame } from '../state/gameStore'
-
-function prefersReducedMotion(): boolean {
-  return typeof window !== 'undefined' && Boolean(window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches)
-}
+import { prefersReducedMotion } from './reducedMotion'
 
 /** Count a number up from 0 with ease-out; jumps straight to the value if motion is reduced. */
 function useCountUp(target: number): number {

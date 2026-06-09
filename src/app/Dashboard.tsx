@@ -3,8 +3,9 @@ import { selectPlayer, useGame } from '../state/gameStore'
 import { useTodos } from '../state/todoStore'
 import { BuffChoiceModal } from '../ui/BuffChoiceModal'
 import { ChatPanel } from '../ui/ChatPanel'
+import { ChatSwitcher } from '../ui/ChatSwitcher'
 import { CombatLog } from '../ui/CombatLog'
-import { CompanionCard } from '../ui/CompanionCard'
+import { DungeonPanel } from '../ui/DungeonPanel'
 import { EquipmentPanel } from '../ui/EquipmentPanel'
 import { ErrorBoundary } from '../ui/ErrorBoundary'
 import { HabitPanel } from '../ui/HabitPanel'
@@ -14,6 +15,9 @@ import { ProductivityView } from '../ui/ProductivityView'
 import { QuestBoard } from '../ui/QuestBoard'
 import { ReactionPopup } from '../ui/ReactionPopup'
 import { RecruitModal } from '../ui/RecruitModal'
+import { SaveSlotsModal } from '../ui/SaveSlotsModal'
+import { ScriptChoiceModal } from '../ui/ScriptChoiceModal'
+import { ScriptCompleteModal } from '../ui/ScriptCompleteModal'
 import { SettingsModal } from '../ui/SettingsModal'
 import { ShopPanel } from '../ui/ShopPanel'
 import { TodoPanel } from '../ui/TodoPanel'
@@ -21,13 +25,14 @@ import { Toasts } from '../ui/Toasts'
 import { VictoryBanner } from '../ui/VictoryBanner'
 import { t } from '../i18n'
 
-type RightView = 'home' | 'quest' | 'party' | 'gear' | 'shop'
+type RightView = 'home' | 'quest' | 'dungeon' | 'party' | 'gear' | 'shop'
 type Zone = 'adventure' | 'calendar'
 
 export function Dashboard() {
   const player = useGame(selectPlayer)
   const gold = useGame((s) => s.gameState?.gold ?? 0)
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [savesOpen, setSavesOpen] = useState(false)
   const [view, setView] = useState<RightView>('home')
   // Top-level separation: the game/combat zone vs. the personal-productivity zone (§21).
   const [zone, setZone] = useState<Zone>('adventure')
@@ -70,9 +75,14 @@ export function Dashboard() {
             </span>
           )}
           {zone === 'adventure' && <span className="chip">🪙 {gold}</span>}
-          <button className="btn btn-ghost" onClick={() => setSettingsOpen(true)}>
-            ⚙ 设置
-          </button>
+          <span className="topbar-tools">
+            <button className="btn btn-ghost" onClick={() => setSavesOpen(true)}>
+              💾 存档
+            </button>
+            <button className="btn btn-ghost" onClick={() => setSettingsOpen(true)}>
+              ⚙ 设置
+            </button>
+          </span>
         </div>
       </header>
 
@@ -94,8 +104,9 @@ export function Dashboard() {
         </div>
         <div className="col">
           <div className="tabbar">
-            <button className={view === 'home' ? 'on' : ''} onClick={() => setView('home')}>伙伴</button>
+            <button className={view === 'home' ? 'on' : ''} onClick={() => setView('home')}>聊天</button>
             <button className={view === 'quest' ? 'on' : ''} onClick={() => setView('quest')}>副本</button>
+            <button className={view === 'dungeon' ? 'on' : ''} onClick={() => setView('dungeon')}>副本库</button>
             <button className={view === 'party' ? 'on' : ''} onClick={() => setView('party')}>队伍</button>
             <button className={view === 'gear' ? 'on' : ''} onClick={() => setView('gear')}>装备</button>
             <button className={view === 'shop' ? 'on' : ''} onClick={() => setView('shop')}>商店</button>
@@ -104,11 +115,12 @@ export function Dashboard() {
           <ErrorBoundary key={view} label="面板">
             {view === 'home' && (
               <>
-                <CompanionCard />
+                <ChatSwitcher />
                 <ChatPanel onOpenSettings={() => setSettingsOpen(true)} />
               </>
             )}
             {view === 'quest' && <QuestBoard />}
+            {view === 'dungeon' && <DungeonPanel />}
             {view === 'party' && <PartyPanel />}
             {view === 'gear' && <EquipmentPanel />}
             {view === 'shop' && <ShopPanel />}
@@ -124,7 +136,10 @@ export function Dashboard() {
       <VictoryBanner />
       <RecruitModal />
       <BuffChoiceModal />
+      <ScriptChoiceModal />
+      <ScriptCompleteModal />
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} />}
+      {savesOpen && <SaveSlotsModal onClose={() => setSavesOpen(false)} />}
     </div>
   )
 }

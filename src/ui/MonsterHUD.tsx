@@ -1,4 +1,4 @@
-import { Fragment, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { SKILL_DEFS } from '../companion/skills'
 import type { Character, PartyBuff } from '../domain/types'
 import { autoTargetEnemy, ctbRound, livingEnemies, type CtbUnit } from '../game/combat'
@@ -8,7 +8,7 @@ import { t } from '../i18n'
 import { selectPlayer, useGame } from '../state/gameStore'
 import { useQuest } from '../state/questStore'
 import { activeSynergiesFor } from '../world/relationships'
-import { FIRST_WORLD_ID, WORLD_DEFS } from '../world/worlds'
+import { FIRST_WORLD_ID, scriptDefFor, WORLD_DEFS } from '../world/worlds'
 import { BattleSprite, CLASS_EMOJI, EnemyCard, enemyEmoji } from './battleSprites'
 import { DefaultActionsModal } from './DefaultActionsModal'
 import { TurnPicker } from './TurnPicker'
@@ -29,17 +29,56 @@ export function MonsterHUD() {
   const [defaultsOpen, setDefaultsOpen] = useState(false)
   const questStatus = useQuest((s) => s.status)
   const startQuest = useQuest((s) => s.startQuest)
-  if (!gs) return null
+  const startScript = useQuest((s) => s.startScript)
+
+  // Turn-order forecast — the expensive bit (effectiveStats per ally + ctbRound TWICE). Memoised on
+  // the game-state refs it actually reads (stable between store updates), so it does NOT recompute
+  // when only a damage float, the combat target, or the local ⚙ popup changes — those re-render the
+  // HUD but don't affect turn order. Must precede the early return below (rules of hooks).
+  const forecast = useMemo(() => {
+    if (!gs) return null
+    const partyCompanions = gs.partyIds
+      .map((id) => characters.find((c) => c.id === id))
+      .filter((c): c is Character => c != null && c.kind === 'companion')
+    const partyForOrder = [player, ...partyCompanions].filter((c): c is Character => Boolean(c))
+    const turnCtx = { ownedEquipment: gs.ownedEquipment, activeSynergies: activeSynergiesFor(partyCompanions.map((c) => c.id)), partyBuffs: gs.partyBuffs }
+    const livingForOrder = partyForOrder.filter((c) => resourceOf(gs, c).hp > 0)
+    // Octopath-style: run ctbRound (the same fn task-completion resolves with) TWICE to preview THIS
+    // round then the NEXT — exact, enemies included. 1 round = 1 task.
+    const ctbUnits: CtbUnit[] = [
+      ...(livingForOrder.length ? livingForOrder : partyForOrder).map((c) => ({
+        side: 'party' as const, id: c.id, spd: effectiveStats(c, turnCtx).spd, charge: gs.charge[c.id] ?? 0,
+      })),
+      ...livingEnemies(gs.enemies).map((m) => ({ side: 'enemy' as const, id: m.id, spd: m.spd, charge: gs.charge[m.id] ?? 0 })),
+    ]
+    const round1 = ctbRound(ctbUnits)
+    const round2 = ctbRound(ctbUnits.map((u) => ({ ...u, charge: round1.charges[u.id] ?? 0 })))
+    const turnSlots = [
+      ...round1.order.map((a) => ({ a, round: 0 })),
+      ...round2.order.map((a) => ({ a, round: 1 })),
+    ]
+    return {
+      partyCompanions,
+      partyForOrder,
+      turnSlots,
+      nextRoundStart: round1.order.length, // index in turnSlots where the next round begins
+      planParty: livingForOrder.length ? livingForOrder : partyForOrder, // members you assign actions to
+    }
+  }, [gs, characters, player])
+  if (!gs || !forecast) return null
+  const { partyCompanions, partyForOrder, turnSlots, nextRoundStart, planParty } = forecast
 
   const activeWorldId = gs.activeWorldId ?? FIRST_WORLD_ID
   const world = WORLD_DEFS[activeWorldId]
   const generating = questStatus === 'generating'
+  // §24: once a world's default campaign is 已通过, the CTA becomes an explicit 重新开始 (startScript)
+  // rather than the implicit startQuest path, which no longer relaunches a cleared campaign.
+  const defaultScriptId = world?.defaultScriptId
+  const scriptDone = !!defaultScriptId && (gs.completedScriptIds ?? []).includes(defaultScriptId)
+  const scriptTitle = defaultScriptId ? (scriptDefFor(defaultScriptId)?.title ?? world?.name) : world?.name
   const enemies = gs.enemies
   const inQuest = Boolean(activeQuest)
   const enemyNameOf = (m: { displayName?: string; nameKey: string }): string => m.displayName ?? t(m.nameKey)
-  const partyCompanions = gs.partyIds
-    .map((id) => characters.find((c) => c.id === id))
-    .filter((c): c is Character => c != null && c.kind === 'companion')
 
   // Whose first turn it is right now (drives the sprite highlight + the inline TurnPicker).
   const arActor = gs.activeRound ? gs.activeRound.order[gs.activeRound.index] : undefined
@@ -61,26 +100,6 @@ export function MonsterHUD() {
   const primaryName = enemies[0] ? enemyNameOf(enemies[0]) : '敌方'
   const teamLabel = enemies.length > 1 ? `${primaryName} 等` : primaryName
 
-  // Turn-order forecast, Octopath-style: run ctbRound TWICE (the very function task-completion
-  // resolves with) to preview THIS round then the NEXT — exact, enemies included. 1 round = 1 task.
-  const partyForOrder = [player, ...partyCompanions].filter((c): c is Character => Boolean(c))
-  const turnCtx = { ownedEquipment: gs.ownedEquipment, activeSynergies: activeSynergiesFor(partyCompanions.map((c) => c.id)), partyBuffs: gs.partyBuffs }
-  const livingForOrder = partyForOrder.filter((c) => resourceOf(gs, c).hp > 0)
-  const ctbUnits: CtbUnit[] = [
-    ...(livingForOrder.length ? livingForOrder : partyForOrder).map((c) => ({
-      side: 'party' as const, id: c.id, spd: effectiveStats(c, turnCtx).spd, charge: gs.charge[c.id] ?? 0,
-    })),
-    ...livingEnemies(enemies).map((m) => ({ side: 'enemy' as const, id: m.id, spd: m.spd, charge: gs.charge[m.id] ?? 0 })),
-  ]
-  const round1 = ctbRound(ctbUnits)
-  const round2 = ctbRound(ctbUnits.map((u) => ({ ...u, charge: round1.charges[u.id] ?? 0 })))
-  const turnSlots = [
-    ...round1.order.map((a) => ({ a, round: 0 })),
-    ...round2.order.map((a) => ({ a, round: 1 })),
-  ]
-  const nextRoundStart = round1.order.length // index in turnSlots where the next round begins
-  // The living party members you assign actions to this round (player + on-field companions).
-  const planParty = livingForOrder.length ? livingForOrder : partyForOrder
   // Each living member's planned action, shown as a badge above its battle sprite (Octopath-style).
   const planLabel = (c: Character): string => {
     const id = gs.roundPlan[c.id]
@@ -174,14 +193,20 @@ export function MonsterHUD() {
         ) : (
           <div className="stage-cta-wrap">
             <span className="stage-cta-hint">
-              这是练手的拖延心魔。开启「{world?.name ?? '剧情'}」副本，面对真正的对手、夺取专属战利品。
+              {scriptDone
+                ? `「${scriptTitle ?? '剧情'}」的战役已通过。想重温这段旅程，可以重新开始。`
+                : `这是练手的拖延心魔。开启「${world?.name ?? '剧情'}」副本，面对真正的对手、夺取专属战利品。`}
             </span>
             <button
               className="btn btn-primary stage-cta"
               disabled={generating}
-              onClick={() => void startQuest(activeWorldId)}
+              onClick={() =>
+                scriptDone && defaultScriptId
+                  ? void startScript(activeWorldId, defaultScriptId)
+                  : void startQuest(activeWorldId)
+              }
             >
-              {generating ? '正在展开剧情…' : '⚔ 开启剧情副本'}
+              {generating ? '正在展开剧情…' : scriptDone ? '✓ 已通过 · 重新开始' : '⚔ 开启剧情副本'}
             </button>
           </div>
         )}

@@ -36,7 +36,7 @@ docs/specs/
 #     locally and never committed, to keep the repo lean and IP-free. ---
 docs/asset-pipeline/
 docs/avator-pics/
-public/portraits/*.png
+public/portraits/**/*.png
 public/portraits-px/
 public/art/
 

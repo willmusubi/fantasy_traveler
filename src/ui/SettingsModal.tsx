@@ -2,6 +2,7 @@ import { useRef, useState } from 'react'
 import { testKey, type AIErrorKind } from '../ai/client'
 import { downloadBackup, importAll, readBackupFile, type BackupPayload } from '../data/backup'
 import { useSettings } from '../state/settingsStore'
+import { Modal } from './Modal'
 
 const MODELS = [
   { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6（推荐 · 性价比）' },
@@ -81,9 +82,9 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
     try {
       await downloadBackup() // safety net: always back up before wiping
       const empty: BackupPayload = {
-        app: 'fantasy-traveler', dbVersion: 3, exportedAt: new Date().toISOString(),
+        app: 'fantasy-traveler', dbVersion: 4, exportedAt: new Date().toISOString(),
         characters: [], todos: [], journalEntries: [], calendarEvents: [], affinity: [],
-        chatThreads: [], chatMessages: [], quests: [], habits: [], gameState: null, settings: null, meta: null,
+        chatThreads: [], chatMessages: [], quests: [], habits: [], dungeons: [], gameState: null, settings: null, meta: null,
       }
       await importAll(empty)
       window.location.reload()
@@ -94,14 +95,14 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()}>
+    <Modal label="设置" onClose={onClose}>
         <h2>设置</h2>
         <p className="sub">填入你的 Anthropic API Key，即可和伙伴进行真实对话。</p>
 
         <div className="field">
-          <label>Anthropic API Key</label>
+          <label htmlFor="setting-apikey">Anthropic API Key</label>
           <input
+            id="setting-apikey"
             className="input"
             type="password"
             placeholder="sk-ant-…"
@@ -123,8 +124,8 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
         </div>
 
         <div className="field">
-          <label>模型</label>
-          <select className="select" value={model} onChange={(e) => setModel(e.target.value)}>
+          <label htmlFor="setting-model">模型</label>
+          <select id="setting-model" className="select" value={model} onChange={(e) => setModel(e.target.value)}>
             {MODELS.map((m) => (
               <option key={m.id} value={m.id}>
                 {m.label}
@@ -151,9 +152,19 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               {busy === 'import' ? '导入中…' : '⬆ 导入存档'}
             </button>
             <input ref={fileRef} type="file" accept="application/json,.json" style={{ display: 'none' }} onChange={onPickFile} />
-            <button className="btn btn-ghost" onClick={clearAll} disabled={busy !== null} style={{ color: 'var(--hp)', marginLeft: 'auto' }}>
-              {busy === 'clear' ? '处理中…' : '清空数据'}
+          </div>
+          {/* Destructive action lives in its own separated danger zone, not inline with the benign
+              backup buttons — distinct red framing + warning so it can't be misclicked for 导出/导入. */}
+          <div className="danger-zone">
+            <button
+              className="btn btn-danger"
+              onClick={clearAll}
+              disabled={busy !== null}
+              aria-label="清空全部本机数据（会先自动下载备份，操作不可撤销）"
+            >
+              {busy === 'clear' ? '处理中…' : '⚠ 清空数据'}
             </button>
+            <span className="danger-note">会先自动下载一份备份，再清空本机全部数据 —— 不可撤销。</span>
           </div>
         </div>
 
@@ -165,7 +176,6 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             保存
           </button>
         </div>
-      </div>
-    </div>
+    </Modal>
   )
 }

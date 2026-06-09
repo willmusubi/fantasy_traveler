@@ -43,6 +43,14 @@ interface TodoStore {
   sweepTimers: () => Promise<void>
 }
 
+/** Ids whose TaskTimerExpired dispatch is in-flight. fireTimerExpiry is reached from three
+ *  fire-and-forget sweepTimers callers (boot, window focus, the 1s heartbeat) that can overlap;
+ *  the `!timerFiredAt` guard reads the in-memory todo, which isn't stamped until AFTER the async
+ *  dispatch, so two concurrent sweeps could both pass the guard and hit the party twice. This
+ *  per-id latch closes that window without losing retry-on-failure (a throwing dispatch leaves
+ *  timerFiredAt unset and removes the id, so the next sweep retries). */
+const firingTimerIds = new Set<string>()
+
 /** Next free sort position (after the current max). */
 function nextOrder(todos: Todo[]): number {
   return todos.reduce((m, t) => Math.max(m, t.order ?? 0), 0) + 1
@@ -307,27 +315,34 @@ export const useTodos = create<TodoStore>((set, get) => ({
     // step-through overlay closes; timerFiredAt is stamped only on the successful dispatch below.
     if (!todo || todo.status !== 'open' || !todo.timerStartedAt || todo.timerFiredAt) return
     if (useGame.getState().gameState?.activeRound) return
+    // A concurrent sweep is already firing this exact timer (its memory stamp isn't written until
+    // the dispatch below resolves) — bail so the party isn't hit twice for one expiry.
+    if (firingTimerIds.has(id)) return
+    firingTimerIds.add(id)
+    try {
+      const fired: Todo = { ...todo, timerFiredAt: new Date().toISOString() }
+      const result = await dispatchEvent(
+        { type: 'TaskTimerExpired', todo: fired },
+        { prewrite: async ({ todos }) => void (await todos.put(fired)) },
+      )
+      set({ todos: get().todos.map((t) => (t.id === id ? fired : t)) })
+      useGame.getState().ingestResult(result)
 
-    const fired: Todo = { ...todo, timerFiredAt: new Date().toISOString() }
-    const result = await dispatchEvent(
-      { type: 'TaskTimerExpired', todo: fired },
-      { prewrite: async ({ todos }) => void (await todos.put(fired)) },
-    )
-    set({ todos: get().todos.map((t) => (t.id === id ? fired : t)) })
-    useGame.getState().ingestResult(result)
-
-    // No monsterGrew effect → ingestResult shows no toast; surface a worried companion line so the
-    // free hit registers (mirrors sweepOverdue's gentle reaction).
-    const companions = selectPartyCompanions(useGame.getState())
-    const reactor = companions[Math.floor(Math.random() * companions.length)]
-    if (reactor) {
-      const line = pickWorriedLine(reactor.id, 1)
-      useGame.getState().showReaction({
-        companionId: reactor.id,
-        text: line.text,
-        expression: line.expression,
-        affinityDelta: 0,
-      })
+      // No monsterGrew effect → ingestResult shows no toast; surface a worried companion line so the
+      // free hit registers (mirrors sweepOverdue's gentle reaction).
+      const companions = selectPartyCompanions(useGame.getState())
+      const reactor = companions[Math.floor(Math.random() * companions.length)]
+      if (reactor) {
+        const line = pickWorriedLine(reactor.id, 1)
+        useGame.getState().showReaction({
+          companionId: reactor.id,
+          text: line.text,
+          expression: line.expression,
+          affinityDelta: 0,
+        })
+      }
+    } finally {
+      firingTimerIds.delete(id)
     }
   },
 

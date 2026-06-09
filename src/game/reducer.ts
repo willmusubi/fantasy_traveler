@@ -33,7 +33,7 @@ import {
   WIPE_REVIVE_HP_PCT,
 } from '../domain/config'
 import { localDateKey } from '../domain/dates'
-import type { ActiveRound, Affinity, CharResource, Character, GameEffect, GameState, ID, Mood, MoodFlag, Monster, OwnedEquipment, PartyBuff, Priority, Quest, SkillId, Stats, TurnActor } from '../domain/types'
+import type { ActiveRound, Affinity, CharResource, Character, GameEffect, GameState, ID, Mood, MoodFlag, Monster, OwnedEquipment, PartyBuff, Priority, Quest, QuestReward, ScriptChapter, ScriptDef, SkillId, Stats, TurnActor } from '../domain/types'
 import type { SynergyDef } from '../world/relationships'
 import { autoTargetEnemy, ctbRound, defeatRewards, livingEnemies, primaryEnemy, spawnMonster, teamCleared, teamFromEncounter, type CtbUnit } from './combat'
 import { effectiveStats, type CombatContext } from './effectiveStats'
@@ -53,6 +53,8 @@ export interface ReducerInput {
   activeSynergies?: SynergyDef[]
   /** The active story quest, if any (materialized upstream; reducer only reads it). */
   quest?: Quest
+  /** The active branching script (§23), if any (resolved upstream from content; reducer only reads it). */
+  script?: ScriptDef
 }
 
 function combatCtx(input: ReducerInput): CombatContext {
@@ -301,29 +303,113 @@ function resolveEncounterClear(t: Turn): boolean {
         victoryText: cleared?.narrationVictory, nextEnemy: nextEnc.enemyName,
       })
     } else {
+      // Final encounter of the current quest/chapter cleared. Grant the reward (same as before),
+      // then branch: a §23 script-driven chapter transitions per chapter.next (and NEVER falls
+      // through to an endless spawn); otherwise the legacy linear path ends the quest and spawns an
+      // endless enemy (back-compat — unchanged for non-script worlds + every existing test).
       t.effects.push({ type: 'encounterCleared', questId: quest.id, encounterIndex: clearedIdx, victoryText: cleared?.narrationVictory })
       t.effects.push({ type: 'questCompleted', questId: quest.id, reward: quest.reward })
-      for (const id of quest.reward.unlockCompanionIds) {
-        if (!t.gs.unlockedCompanionIds.includes(id)) {
-          t.gs.unlockedCompanionIds = [...t.gs.unlockedCompanionIds, id]
-          t.effects.push({ type: 'recruited', companionId: id })
-        }
-      }
-      for (const defId of quest.reward.equipmentDefIds) {
-        const instanceId = newId()
-        t.gs.ownedEquipment = [...t.gs.ownedEquipment, { instanceId, defId, acquiredAt: t.input.now.toISOString() }]
-        t.effects.push({ type: 'equipmentGranted', defId, instanceId })
-      }
-      grantXp(t, quest.reward.playerXp ?? 0)
+      grantQuestReward(t, quest.reward)
       t.gs.gold += GOLD_QUEST_CLEAR
-      t.gs.activeQuestId = undefined
-      t.gs.enemies = [spawnMonster(t.gs.storyStage, t.input.openHighCount, newId)]
+
+      const script = t.input.script
+      const chapter = script && t.gs.currentChapterId ? script.chapters[t.gs.currentChapterId] : undefined
+      if (script && chapter) {
+        applyChapterTransition(t, script, chapter)
+      } else {
+        t.gs.activeQuestId = undefined
+        t.gs.enemies = [spawnMonster(t.gs.storyStage, t.input.openHighCount, newId)]
+      }
     }
   } else {
     t.gs.enemies = [spawnMonster(t.gs.storyStage, t.input.openHighCount, newId)]
     t.effects.push({ type: 'victory', defeatedMonsterId: primaryId, storyStage: t.gs.storyStage, nextEnemyHp: t.gs.enemies[0].maxHp })
   }
   return true
+}
+
+// ---------- Script (branching campaign, §23) ----------
+
+/** Grant a quest/chapter reward onto the turn: recruit companions, grant equipment, player XP.
+ *  Shared by the linear quest-complete path and the §23 script paths (incl. choice options). The
+ *  flat GOLD_QUEST_CLEAR clear-bonus is granted by the caller (it's a clear bonus, not part of the
+ *  reward), so a follow-up choice option doesn't double-pay it. */
+function grantQuestReward(t: Turn, reward: QuestReward): void {
+  for (const id of reward.unlockCompanionIds) {
+    if (!t.gs.unlockedCompanionIds.includes(id)) {
+      t.gs.unlockedCompanionIds = [...t.gs.unlockedCompanionIds, id]
+      t.effects.push({ type: 'recruited', companionId: id })
+    }
+  }
+  for (const defId of reward.equipmentDefIds) {
+    const instanceId = t.input.newId()
+    t.gs.ownedEquipment = [...t.gs.ownedEquipment, { instanceId, defId, acquiredAt: t.input.now.toISOString() }]
+    t.effects.push({ type: 'equipmentGranted', defId, instanceId })
+  }
+  grantXp(t, reward.playerXp ?? 0)
+}
+
+/** §23: after a chapter's final boss, transition per chapter.next. Mutates `t`.
+ *  - string chapterId → advance (pointer set; the pipeline materializes + spawns the next chapter).
+ *  - ScriptChoice → push scriptChoiceOffered and PAUSE (no spawn; the defeated team stays until a pick).
+ *  - null → campaign finale: end cleanly with NO endless spawn (this is the "repeats forever" fix). */
+function applyChapterTransition(t: Turn, script: ScriptDef, chapter: ScriptChapter): void {
+  const next = chapter.next
+  if (typeof next === 'string') {
+    advanceToChapter(t, script, next)
+  } else if (next && typeof next === 'object') {
+    t.effects.push({ type: 'scriptChoiceOffered', prompt: next.prompt, options: next.options })
+  } else {
+    finishScript(t, script)
+  }
+}
+
+/** §23: point the campaign at `nextId`; the PIPELINE materializes its quest + spawns enemies (the
+ *  pure reducer has no quest data for the next chapter, so it never spawns here). Unknown id → finale. */
+function advanceToChapter(t: Turn, script: ScriptDef, nextId: string): void {
+  const ch = script.chapters[nextId]
+  if (!ch) {
+    finishScript(t, script)
+    return
+  }
+  t.gs.currentChapterId = nextId
+  t.gs.encounterIndex = 0
+  t.gs.clearedEncounterKey = undefined
+  t.effects.push({ type: 'scriptChapterAdvanced', chapterId: nextId, firstEnemy: ch.encounters[0]?.enemyName })
+}
+
+/** §23: end the campaign — push scriptCompleted, clear the script/quest pointers, empty the enemy
+ *  team (NO endless spawn). The store offers save-as-副本 / replay / return on this effect. */
+function finishScript(t: Turn, script: ScriptDef): void {
+  t.effects.push({ type: 'scriptCompleted', scriptId: script.id, flags: t.gs.scriptFlags })
+  // §24: remember this campaign as 已通过 so it isn't silently re-entered (replay must be explicit).
+  const done = t.gs.completedScriptIds ?? []
+  if (!done.includes(script.id)) t.gs.completedScriptIds = [...done, script.id]
+  t.gs.activeQuestId = undefined
+  t.gs.activeScriptId = undefined
+  t.gs.currentChapterId = undefined
+  t.gs.enemies = []
+}
+
+/** §23: the player picked a post-boss option in the ScriptChoiceModal. Apply its persistent flags +
+ *  unlocks + loot, then advance to the next chapter (pointer set; pipeline spawns) or finish the
+ *  campaign. Pure. A stale / invalid pick is a no-op that leaves state intact. */
+function reduceScriptChoicePicked(input: ReducerInput, optionId: string): ReducerResult {
+  const t = newTurn(input)
+  const script = t.input.script
+  const chapter = script && t.gs.currentChapterId ? script.chapters[t.gs.currentChapterId] : undefined
+  const choice = chapter && chapter.next && typeof chapter.next === 'object' ? chapter.next : undefined
+  const option = choice?.options.find((o) => o.id === optionId)
+  if (!script || !option) return finishTurn(t)
+
+  if (option.setFlags) t.gs.scriptFlags = { ...t.gs.scriptFlags, ...option.setFlags }
+  grantQuestReward(t, {
+    equipmentDefIds: option.equipmentDefIds ?? [],
+    unlockCompanionIds: option.unlockCompanionIds ?? [],
+  })
+  if (option.nextChapterId) advanceToChapter(t, script, option.nextChapterId)
+  else finishScript(t, script)
+  return finishTurn(t)
 }
 
 // ---------- Event entry ----------
@@ -341,6 +427,8 @@ export function gameReducer(input: ReducerInput, event: DomainEvent): ReducerRes
       return reduceRoundBegan(input, event.todo.priority, event.todo.id)
     case 'RoundAdvanced':
       return reduceRoundAdvanced(input, event.choice, event.auto, event.targetId)
+    case 'ScriptChoicePicked':
+      return reduceScriptChoicePicked(input, event.optionId)
     case 'TodoOverdue':
       return reduceTodoOverdue(input)
     case 'TaskTimerExpired':

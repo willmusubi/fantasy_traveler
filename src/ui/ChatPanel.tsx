@@ -1,18 +1,30 @@
 import { useEffect, useRef, useState } from 'react'
-import { selectPrimaryCompanion, useGame } from '../state/gameStore'
 import { useChat } from '../state/chatStore'
+import { useGame } from '../state/gameStore'
+import { prefersReducedMotion } from './reducedMotion'
 
 export function ChatPanel({ onOpenSettings }: { onOpenSettings: () => void }) {
   const messages = useChat((s) => s.messages)
   const sending = useChat((s) => s.sending)
+  const thinkingName = useChat((s) => s.thinkingName)
   const error = useChat((s) => s.error)
   const send = useChat((s) => s.send)
-  const companion = useGame(selectPrimaryCompanion)
+  const target = useChat((s) => s.target)
+  const characters = useGame((s) => s.characters)
   const [text, setText] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
 
+  const isGroup = target.kind === 'group'
+  const soloCompanion = target.kind === 'solo' ? characters.find((c) => c.id === target.companionId) : undefined
+  const title = isGroup ? '队伍群聊' : `与 ${soloCompanion?.name ?? '伙伴'} 对话`
+  const emptyText = isGroup
+    ? '和队伍里的伙伴们聊聊吧 —— 大家都会接话哦。'
+    : `和 ${soloCompanion?.name ?? '伙伴'} 说点什么吧 —— 你今天的进度，${soloCompanion?.name ?? '伙伴'}都看在眼里哦。`
+  const thinkingWho = thinkingName ?? soloCompanion?.name ?? '伙伴'
+  const nameFor = (sender: string) => characters.find((c) => c.id === sender)?.name ?? '伙伴'
+
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' })
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
   }, [messages, sending])
 
   const submit = (e: React.FormEvent) => {
@@ -25,20 +37,22 @@ export function ChatPanel({ onOpenSettings }: { onOpenSettings: () => void }) {
   return (
     <div className="panel chat">
       <div className="panel-title">
-        <span>与 {companion?.name ?? '伙伴'} 对话</span>
+        <span>{title}</span>
       </div>
       <div className="messages" ref={scrollRef}>
-        {messages.length === 0 && (
-          <div className="msg system">和 {companion?.name ?? '伙伴'} 说点什么吧 —— TA 知道你今天的进度哦。</div>
-        )}
-        {messages.map((m) => (
-          <div key={m.id} className={`msg ${m.sender === 'player' ? 'player' : m.sender === 'system' ? 'system' : 'bot'}`}>
-            {m.text}
-          </div>
-        ))}
+        {messages.length === 0 && <div className="msg system">{emptyText}</div>}
+        {messages.map((m) => {
+          const kind = m.sender === 'player' ? 'player' : m.sender === 'system' ? 'system' : 'bot'
+          return (
+            <div key={m.id} className={`msg ${kind}`}>
+              {isGroup && kind === 'bot' && <div className="msg-speaker">{nameFor(m.sender)}</div>}
+              {m.text}
+            </div>
+          )
+        })}
         {sending && (
           <div className="thinking">
-            {companion?.name ?? '伙伴'} 正在思考
+            {thinkingWho} 正在思考
             <span className="dot" /><span className="dot" /><span className="dot" />
           </div>
         )}

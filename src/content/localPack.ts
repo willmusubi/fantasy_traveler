@@ -10,6 +10,7 @@
 import type { CompanionLines } from '../companion/cannedLines'
 import type { CompanionDef } from '../companion/roster'
 import type { SkillDef } from '../companion/skills'
+import type { ScriptDef } from '../domain/types'
 import type { EquipmentDef } from '../world/equipment'
 import type { RelationshipEdge, SynergyDef } from '../world/relationships'
 import type { WorldDef } from '../world/worlds'
@@ -30,6 +31,8 @@ export interface ContentPack {
   cannedLines?: Record<string, CompanionLines>
   /** i18n overrides merged over the base zh-CN dict (skill / world / equip / rel / synergy names). */
   i18n?: Record<string, string>
+  /** Branching campaign scripts (§23), keyed by script id. */
+  scripts?: Record<string, ScriptDef>
 }
 
 // Eagerly collect any gitignored local pack(s). With no local dir, Vite returns {} → no override.

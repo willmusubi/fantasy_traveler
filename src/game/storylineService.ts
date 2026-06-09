@@ -9,8 +9,9 @@ import { COMPANION_DEFS } from '../companion/roster'
 import { buildContext, renderContextZh } from '../ai/contextBuilder'
 import { AIError } from '../ai/client'
 import { generateStoryline, materializeQuest } from '../ai/storyline'
-import type { Affinity, Character, GameState, Quest, QuestBlueprint, Settings, Todo } from '../domain/types'
+import type { Affinity, Character, GameState, Quest, QuestBlueprint, ScriptDef, Settings, Todo } from '../domain/types'
 import { getWorldEquipment } from '../world/equipment'
+import { renderScriptFacts } from '../world/scriptFacts'
 import { renderWorldLore, storyChapterFor, type WorldDef } from '../world/worlds'
 
 export interface StartQuestInput {
@@ -23,6 +24,8 @@ export interface StartQuestInput {
   settings: Settings
   now: Date
   newId: () => string
+  /** §23: the active branching script, if any — its flag declarations give scriptFacts their meaning. */
+  script?: ScriptDef
 }
 
 function rosterContext(input: StartQuestInput): string {
@@ -80,6 +83,7 @@ export async function buildAndGenerateQuest(input: StartQuestInput): Promise<{
       rewardPool: rewardPool(input, chapter),
       world: input.world,
       unlockedCompanionIds: input.gameState.unlockedCompanionIds,
+      scriptFacts: renderScriptFacts(input.gameState.scriptFlags, input.script),
     })
     // Riff within canon, but anchor the recruit to the authored chapter (reliable progression).
     blueprint = { ...ai, reward: { ...ai.reward, unlockCompanionIds: chapter.reward.unlockCompanionIds } }

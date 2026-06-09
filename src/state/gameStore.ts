@@ -2,17 +2,20 @@ import { create } from 'zustand'
 import { rankForPoints } from '../companion/affinity'
 import { COMPANION_DEFS, createCompanionCharacter, createPlayer, PRIMARY_COMPANION_ID } from '../companion/roster'
 import { SKILL_DEFS } from '../companion/skills'
-import { affinityRepo, charactersRepo, gameStateRepo, questsRepo } from '../data/repositories'
+import { affinityRepo, charactersRepo, dungeonsRepo, gameStateRepo, questsRepo } from '../data/repositories'
 import { HABIT_BUFF_ACTIVE_CAP, HABIT_BUFF_CHOICES, HABIT_BUFF_POOL, HABIT_DEBUFF_POOL, type HabitBuffDef } from '../domain/config'
 import { localDateKey } from '../domain/dates'
-import type { Affinity, Character, ClassId, ExpressionKey, GameState, ID, PartyBuff, Priority, Quest, SkillId, Todo, WorldId } from '../domain/types'
-import { spawnMonster } from '../game/combat'
+import type { Affinity, Character, ClassId, DungeonRecord, ExpressionKey, GameState, ID, PartyBuff, Priority, Quest, ScriptChoiceOption, SkillId, Todo, WorldId } from '../domain/types'
+import { materializeQuest } from '../ai/storyline'
+import { spawnMonster, teamFromEncounter } from '../game/combat'
 import { dispatchEvent } from '../game/pipeline'
 import type { ReducerResult } from '../game/reducer'
 import { t } from '../i18n'
 import { EQUIPMENT_DEFS } from '../world/equipment'
 import { SHOP_POTIONS } from '../world/shop'
-import { fireCompletionReaction } from './todoStore'
+import { registerRuntimeScript, scriptDefFor } from '../world/worlds'
+import { useSettings } from './settingsStore'
+import { fireCompletionReaction, useTodos } from './todoStore'
 
 export interface Toast {
   id: string
@@ -67,6 +70,10 @@ interface GameStore {
   victorySummary: VictorySummary | null
   /** Queue of pending habit buff drafts (one per habit completion). Transient — not persisted. */
   pendingBuffChoices: BuffChoice[]
+  /** A pending post-boss branch choice (§23). Transient — surfaced by a scriptChoiceOffered effect. */
+  pendingScriptChoice: { prompt: string; options: ScriptChoiceOption[] } | null
+  /** Set when a campaign finishes (§23) — drives the save-as-副本 / replay / return prompt. */
+  scriptCompletion: { scriptId: string; flags: Record<string, string | boolean> } | null
 
   hydrate: () => Promise<void>
   seedNewGame: (name: string, classId: ClassId) => Promise<void>
@@ -82,6 +89,14 @@ interface GameStore {
   chooseBuff: (optionId: string) => Promise<void>
   /** Dequeue the head draft without applying (forfeit). */
   dismissBuffChoice: () => void
+  /** §23: resolve a post-boss branch choice (dispatch ScriptChoicePicked; hydrate on recruit/advance). */
+  chooseScriptOption: (optionId: string) => Promise<void>
+  /** §23: dismiss the campaign-complete prompt. */
+  clearScriptCompletion: () => void
+  /** §23: save the active (or just-finished) campaign as a replayable 副本. */
+  saveActiveAsDungeon: (label: string) => Promise<void>
+  /** §23: enter/replay a saved 副本 from its start (resets script progress + flags). */
+  enterDungeon: (id: string) => Promise<void>
   /** Apply one random debuff (untilVictory) — fired when a habit's streak breaks. */
   applyRandomDebuff: () => Promise<void>
   /** Plan a party member's action for the next task-executed round: a SkillId, or null = basic
@@ -178,6 +193,8 @@ export const useGame = create<GameStore>((set, get) => ({
   recruitedId: null,
   victorySummary: null,
   pendingBuffChoices: [],
+  pendingScriptChoice: null,
+  scriptCompletion: null,
   steppingEnabled: false,
 
   async hydrate() {
@@ -229,6 +246,8 @@ export const useGame = create<GameStore>((set, get) => ({
       combatLog: [],
       charge: {}, // CTB gauges start empty
       roundPlan: {}, // every member basic-attacks until you assign a skill
+      scriptFlags: {}, // §23: no story flags at start
+      completedScriptIds: [], // §24: no campaigns cleared yet
     }
 
     await charactersRepo.putMany([player, companion])
@@ -268,6 +287,8 @@ export const useGame = create<GameStore>((set, get) => ({
     let narration: string | undefined
     let nextEnemy: string | undefined
     let questComplete = false
+    let scriptChoice: { prompt: string; options: ScriptChoiceOption[] } | null = null
+    let scriptDone: { scriptId: string; flags: Record<string, string | boolean> } | null = null
 
     for (const e of result.effects) {
       if (e.type === 'damage') {
@@ -294,6 +315,12 @@ export const useGame = create<GameStore>((set, get) => ({
         if (e.nextEnemy) nextEnemy = e.nextEnemy
       } else if (e.type === 'questCompleted') {
         questComplete = true
+      } else if (e.type === 'scriptChoiceOffered') {
+        scriptChoice = { prompt: e.prompt, options: e.options } // §23: surface the post-boss modal
+      } else if (e.type === 'scriptChapterAdvanced') {
+        if (e.firstEnemy) nextEnemy = e.firstEnemy // §23: next chapter's first foe (victory window)
+      } else if (e.type === 'scriptCompleted') {
+        scriptDone = { scriptId: e.scriptId, flags: e.flags } // §23: drives the campaign-complete prompt
       } else if (e.type === 'recruited') {
         recruitedId = e.companionId
         recruits.push(COMPANION_DEFS[e.companionId]?.name ?? e.companionId)
@@ -348,6 +375,8 @@ export const useGame = create<GameStore>((set, get) => ({
       activeQuest: result.gameState.activeQuestId ? prev.activeQuest : null,
       recruitedId: recruitedId ?? prev.recruitedId,
       victorySummary,
+      pendingScriptChoice: scriptChoice ?? prev.pendingScriptChoice,
+      scriptCompletion: scriptDone ?? prev.scriptCompletion,
       toasts: [...prev.toasts, ...toasts],
       lastDamageByEnemy: Object.keys(dmgByEnemy).length
         ? { ...prev.lastDamageByEnemy, ...Object.fromEntries(Object.entries(dmgByEnemy).map(([id, a]) => [id, { amount: a, key: ++reactionKey }])) }
@@ -402,6 +431,68 @@ export const useGame = create<GameStore>((set, get) => ({
     const queue = get().pendingBuffChoices
     if (queue.length === 0) return
     set({ pendingBuffChoices: queue.slice(1) })
+  },
+
+  async chooseScriptOption(optionId) {
+    if (!get().pendingScriptChoice) return
+    set({ pendingScriptChoice: null }) // optimistic close
+    const result = await dispatchEvent({ type: 'ScriptChoicePicked', optionId })
+    get().ingestResult(result)
+    // A recruit (rescued character), a chapter materialize, or the finale → reload chars/quest/state.
+    if (result.effects.some((e) => e.type === 'recruited' || e.type === 'scriptChapterAdvanced' || e.type === 'scriptCompleted')) {
+      await get().hydrate()
+    }
+  },
+
+  clearScriptCompletion() {
+    set({ scriptCompletion: null })
+  },
+
+  async saveActiveAsDungeon(label) {
+    const gs = get().gameState
+    const completion = get().scriptCompletion
+    const script = scriptDefFor(gs?.activeScriptId ?? completion?.scriptId)
+    if (!gs || !script) return
+    const record: DungeonRecord = {
+      id: crypto.randomUUID(),
+      script,
+      worldId: script.worldId,
+      label: label.trim() || script.title,
+      savedAt: new Date().toISOString(),
+      completedFlags: completion?.flags ?? gs.scriptFlags,
+    }
+    await dungeonsRepo.put(record)
+    registerRuntimeScript(script) // keep it resolvable for an immediate replay
+    set({ toasts: [...get().toasts, { id: tid(), kind: 'quest', text: `📜 已收藏副本「${record.label}」` }] })
+  },
+
+  async enterDungeon(id) {
+    const gs = get().gameState
+    const rec = await dungeonsRepo.get(id)
+    if (!gs || !rec) return
+    const script = rec.script
+    const startCh = script.chapters[script.startChapterId]
+    if (!startCh) return
+    registerRuntimeScript(script) // so the pipeline can resolve this script's chapter transitions
+    const openHigh = useTodos.getState().todos.filter((td) => td.status === 'open' && td.priority === 'high').length
+    const model = useSettings.getState().settings.model
+    const quest = materializeQuest(startCh, script.worldId, new Date(), () => crypto.randomUUID(), model)
+    const enemies = teamFromEncounter(quest.encounters[0], gs.storyStage, openHigh, () => crypto.randomUUID())
+    await questsRepo.put(quest)
+    const next: GameState = {
+      ...gs,
+      activeWorldId: script.worldId,
+      activeScriptId: script.id,
+      currentChapterId: script.startChapterId,
+      activeQuestId: quest.id,
+      encounterIndex: 0,
+      scriptFlags: {}, // fresh replay — clear the alternate history
+      clearedEncounterKey: undefined,
+      enemies,
+    }
+    await gameStateRepo.put(next)
+    set({ scriptCompletion: null, pendingScriptChoice: null })
+    await get().hydrate()
   },
 
   async applyRandomDebuff() {
@@ -561,4 +652,10 @@ async function onRoundResolved(result: ReducerResult, priority: Priority): Promi
   if (result.effects.some((e) => e.type === 'recruited' || e.type === 'questCompleted')) {
     await useGame.getState().hydrate()
   }
+}
+
+/** §23: register every saved 副本's frozen script for runtime resolution. Call once at boot so a
+ *  dungeon whose script isn't in the static content pack still advances chapters after a reload. */
+export async function registerSavedDungeonScripts(): Promise<void> {
+  for (const d of await dungeonsRepo.all()) registerRuntimeScript(d.script)
 }

@@ -246,6 +246,72 @@ export interface QuestBlueprint {
   reward: QuestReward
 }
 
+// ---------- Script (branching campaign, §23) ----------
+
+/** One selectable option after a boss, in a ScriptChoice. */
+export interface ScriptChoiceOption {
+  id: string
+  label: string
+  description: string
+  /** Chapter id to advance to; null ends the campaign on this option. */
+  nextChapterId: string | null
+  /** Persistent story flags this option sets (merged into GameState.scriptFlags). */
+  setFlags?: Record<string, string | boolean>
+  /** Companions this option recruits (e.g. a rescued character becomes joinable). */
+  unlockCompanionIds?: string[]
+  /** Equipment this option grants. */
+  equipmentDefIds?: string[]
+}
+
+/** A post-boss branch point: prompt + 2–4 options. */
+export interface ScriptChoice {
+  prompt: string
+  options: ScriptChoiceOption[]
+}
+
+/** A chapter in a script = a QuestBlueprint (so it runs through the EXISTING quest pipeline
+ *  unchanged) plus an id and a transition. `next`:
+ *  - string       → linear advance to that chapter id
+ *  - ScriptChoice → pause for a player choice after the chapter's final boss
+ *  - null         → campaign finale (ends properly; no endless spawn). */
+export interface ScriptChapter extends QuestBlueprint {
+  id: string
+  next: string | ScriptChoice | null
+}
+
+/** Declares a meaningful persistent flag + its narrative meaning, for AI injection + UI. */
+export interface ScriptFlagDef {
+  key: string
+  /** Human/AI-facing meaning, e.g. 「蕾贝卡是否生还」. */
+  description: string
+  /** Optional enumerated values with meaning, e.g. { rescued: '被救下，成为可招募同伴', dead: '战死' }. */
+  values?: Record<string, string>
+}
+
+/** A branching campaign skeleton for a world (authored; the in-app AI improvises within it). */
+export interface ScriptDef {
+  id: string
+  worldId: WorldId
+  title: string
+  synopsis: string
+  startChapterId: string
+  chapters: Record<string, ScriptChapter>
+  /** The meaningful persistent flags, declared so the AI + UI know what they mean. */
+  flags?: ScriptFlagDef[]
+}
+
+/** A saved, replayable 副本 = a frozen ScriptDef snapshot + library metadata. */
+export interface DungeonRecord {
+  id: ID
+  /** The frozen script this dungeon replays (snapshot at save time). */
+  script: ScriptDef
+  worldId: WorldId
+  label: string
+  savedAt: string
+  /** The flag-state the player ended with (for the library card summary; NOT replayed). */
+  completedFlags?: Record<string, string | boolean>
+}
+
 export type QuestStatus = 'available' | 'active' | 'completed'
 
 export interface Quest {
@@ -338,6 +404,10 @@ export type GameEffect =
   | { type: 'questCompleted'; questId: ID; reward: QuestReward }
   | { type: 'recruited'; companionId: ID }
   | { type: 'equipmentGranted'; defId: string; instanceId: ID }
+  // Script branching (§23)
+  | { type: 'scriptChoiceOffered'; prompt: string; options: ScriptChoiceOption[] }
+  | { type: 'scriptChapterAdvanced'; chapterId: string; firstEnemy?: string }
+  | { type: 'scriptCompleted'; scriptId: string; flags: Record<string, string | boolean> }
 
 /** An in-progress interactive (FF-style step-through) round. Present only while the player is
  *  resolving turns; cleared at finalize. Persisted in GameState so a refresh mid-round resumes. */
@@ -388,6 +458,17 @@ export interface GameState {
   // --- Worldview / storyline (§22) ---
   activeWorldId?: WorldId
   activeQuestId?: ID
+  /** Active branching script (§23). When set, supersedes the linear storyChapters path. */
+  activeScriptId?: string
+  /** Current chapter id within the active script (§23). */
+  currentChapterId?: string
+  /** Persistent story flags for the whole campaign — injected into ALL AI context. Default {}. */
+  scriptFlags: Record<string, string | boolean>
+  /** §24: scriptIds whose finale (finishScript) has been reached at least once. Drives the
+   *  「已通过」badge and gates startQuest's defaultScriptId auto-redirect so a cleared campaign
+   *  is NOT silently relaunched — replay must be explicit. Survives replays (never cleared here).
+   *  Default []. */
+  completedScriptIds: string[]
   /** Narrative pointer into the active quest's encounters. */
   encounterIndex: number
   /** All recruited companions (superset of companions in partyIds). */
@@ -441,4 +522,41 @@ export interface Settings {
   model: string
   language: 'zh-CN' | 'en'
   theme: string
+}
+
+// ---------- Save / backup ----------
+
+/** A full snapshot of every IndexedDB store — the unit of file export/import (backup.ts)
+ *  and the frozen body of a save slot. Fields are `unknown[]`/`unknown` so this type stays
+ *  decoupled from each store's evolving shape; read-time defaulting backfills on restore. */
+export interface BackupPayload {
+  app: 'fantasy-traveler'
+  dbVersion: number
+  exportedAt: string
+  characters: unknown[]
+  todos: unknown[]
+  journalEntries: unknown[]
+  calendarEvents: unknown[]
+  affinity: unknown[]
+  chatThreads: unknown[]
+  chatMessages: unknown[]
+  quests: unknown[]
+  habits: unknown[]
+  dungeons: unknown[]
+  gameState: unknown | null
+  settings: unknown | null
+  meta: unknown | null
+}
+
+/** A named in-app save slot: a frozen BackupPayload plus metadata. Lives in its own `saves`
+ *  store, which is deliberately NOT in backup.ts's ALL_STORES — so restoring one slot (or
+ *  清空数据) never wipes the OTHER slots, and file exports don't recurse into the slots. */
+export interface SaveSlot {
+  id: ID
+  name: string
+  createdAt: string
+  savedAt: string // last time the live game state was captured into this slot
+  dbVersion: number
+  bytes: number // approx UTF-8 size of the payload, shown as a UI hint
+  payload: BackupPayload
 }

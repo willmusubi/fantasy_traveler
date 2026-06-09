@@ -1,6 +1,9 @@
-// Shared battle-sprite primitives (placeholder emoji until real pixel art lands), used by both the
-// always-on MonsterHUD and the interactive RoundResolver overlay.
+// Shared battle-sprite primitives, used by both the always-on MonsterHUD and the interactive
+// RoundResolver overlay. A party sprite prefers real art (a pixel sprite at /sprites/<set>.png, or
+// the HD head-crop as a gold-framed combat token) and falls back to a placeholder emoji — so the
+// public emoji cast still works, and dropping in art upgrades the stage with no code change.
 
+import { useState } from 'react'
 import type { CharResource, Character, ClassId, Monster } from '../domain/types'
 import { t } from '../i18n'
 
@@ -47,10 +50,29 @@ export function BattleSprite({
 }) {
   const downed = res.hp <= 0
   const emoji = downed ? '💫' : isPlayer ? CLASS_EMOJI[char.classId] ?? '⚔️' : '🙂'
+  // Real battle art if present (drop a pixel sprite at /sprites/<set>.png), else the HD head-crop as
+  // a gold-framed token, else the emoji. onError walks the chain down on a missing file.
+  const candidates = downed ? [] : [`/sprites/${char.portraitSet}.png`, `/portraits/heads/${char.portraitSet}.png`]
+  const [failed, setFailed] = useState<Set<string>>(() => new Set())
+  const artSrc = candidates.find((c) => !failed.has(c))
   return (
     <div className={`bsprite ${downed ? 'downed' : ''} ${active ? 'acting' : ''}`}>
       {!downed && plan && <div className="bsprite-action" title="这一回合的行动">{plan}</div>}
-      <div className="bsprite-body" aria-hidden>{emoji}</div>
+      {artSrc ? (
+        <div className="bsprite-body has-art" aria-hidden>
+          <img
+            className="bsprite-art"
+            src={artSrc}
+            alt=""
+            draggable={false}
+            loading="lazy"
+            decoding="async"
+            onError={() => setFailed((prev) => new Set(prev).add(artSrc))}
+          />
+        </div>
+      ) : (
+        <div className="bsprite-body" aria-hidden>{emoji}</div>
+      )}
       <div className="bsprite-shadow" aria-hidden />
       <div className="bsprite-name">
         {char.name} <span className="bsprite-lv">Lv.{char.stats.level}</span>

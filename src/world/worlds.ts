@@ -4,7 +4,7 @@
 // generation; `storyChapters` are the canon spine (also the offline path). (§22)
 
 import { LOCAL_PACK } from '../content/localPack'
-import type { QuestBlueprint, WorldId } from '../domain/types'
+import type { QuestBlueprint, ScriptChapter, ScriptDef, WorldId } from '../domain/types'
 
 /** A canon antagonist for a world — becomes an encounter enemy and grounds the generator. */
 export interface AntagonistDef {
@@ -33,6 +33,10 @@ export interface WorldDef {
   starterCompanionId: string
   /** The authored canon arc — the faithful story spine, in order. */
   storyChapters: QuestBlueprint[]
+  /** Script ids available in this world (§23). Optional — worlds without scripts use the linear spine. */
+  scripts?: string[]
+  /** The script auto-selected when a player starts a campaign in this world (§23). */
+  defaultScriptId?: string
 }
 
 const STARGAZERS: WorldDef = {
@@ -163,6 +167,46 @@ const DEFAULT_WORLD_DEFS: Record<WorldId, WorldDef> = {
 export const WORLD_DEFS: Record<WorldId, WorldDef> = LOCAL_PACK?.worlds ?? DEFAULT_WORLD_DEFS
 
 export const FIRST_WORLD_ID: WorldId = LOCAL_PACK?.firstWorldId ?? 'stargazers'
+
+/** Active branching scripts (§23) — a local content pack overrides; empty by default (the shipped
+ *  sample ships none, so every default-world path stays on the linear storyChapters spine). */
+export const SCRIPT_DEFS: Record<string, ScriptDef> = LOCAL_PACK?.scripts ?? {}
+
+/** Runtime-registered scripts (§23) — saved 副本 snapshots whose script id may not live in the static
+ *  content pack (e.g. a future app-generated campaign). Registered on boot + when a dungeon is entered,
+ *  so the pipeline can still resolve the active script (and advance chapters) after a page reload. */
+const RUNTIME_SCRIPTS: Record<string, ScriptDef> = {}
+
+/** Register a script for runtime resolution (idempotent; last write wins). */
+export function registerRuntimeScript(script: ScriptDef): void {
+  RUNTIME_SCRIPTS[script.id] = script
+}
+
+/** Resolve a script by id: the content pack wins, else a runtime-registered (saved-副本) snapshot. */
+export function scriptDefFor(scriptId: string | undefined): ScriptDef | undefined {
+  if (!scriptId) return undefined
+  return SCRIPT_DEFS[scriptId] ?? RUNTIME_SCRIPTS[scriptId]
+}
+
+/** Wrap a world's linear `storyChapters` into a trivial (branch-free) ScriptDef — lets an existing
+ *  world become script-driven without re-authoring. ch0→ch1→…→chN; the last chapter is the finale
+ *  (`next: null`). Proves a script is a strict superset of the linear spine. Pure. */
+export function scriptFromChapters(world: WorldDef, scriptId: string): ScriptDef {
+  const chapters: Record<string, ScriptChapter> = {}
+  world.storyChapters.forEach((c, i) => {
+    const id = `ch${i}`
+    const next = i < world.storyChapters.length - 1 ? `ch${i + 1}` : null
+    chapters[id] = { ...c, id, next }
+  })
+  return {
+    id: scriptId,
+    worldId: world.id,
+    title: world.name,
+    synopsis: world.tagline,
+    startChapterId: 'ch0',
+    chapters,
+  }
+}
 
 /** The cacheable lore prefix fed to the storyline generator (incl. the antagonist roster). Pure. */
 export function renderWorldLore(world: WorldDef): string {

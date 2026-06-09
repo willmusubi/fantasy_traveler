@@ -40,7 +40,7 @@ function makeInput(over: Partial<ReducerInput> = {}): ReducerInput {
     gold: 0,
     partyBuffs: [],
     combatLog: [],
-    charge: {}, roundPlan: {},
+    charge: {}, roundPlan: {}, scriptFlags: {}, completedScriptIds: [],
   }
   const affinities: Record<string, Affinity> = { mira: freshAffinity('mira', TODAY) }
   return { gameState, affinities, party: PARTY, now: NOW, newId: () => 'm-next', openHighCount: 0, ...over }
@@ -214,7 +214,7 @@ describe('gameReducer · victory', () => {
     const input = makeInput({ gameState: {
       partyIds: ['player', 'mira'], enemies: [makeMonster({ hp: 50 })], storyStage: 0,
       buffs: [], moodFlags: {}, lastResolvedAt: '',
-      encounterIndex: 0, unlockedCompanionIds: ['mira'], ownedEquipment: [], resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {},
+      encounterIndex: 0, unlockedCompanionIds: ['mira'], ownedEquipment: [], resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {}, scriptFlags: {}, completedScriptIds: [],
     } })
     const r = gameReducer(input, { type: 'TodoCompleted', todo: todo('high') })
     expect(r.effects.find((e) => e.type === 'victory')).toMatchObject({ storyStage: 1, defeatedMonsterId: 'm1' })
@@ -235,7 +235,7 @@ describe('gameReducer · victory', () => {
     const input = makeInput({ gameState: {
       partyIds: ['player', 'mira'], enemies: [makeMonster({ id: 'm1', hp: 50 })], storyStage: 3,
       clearedEncounterKey: 'endless:0:m1', buffs: [], moodFlags: {}, lastResolvedAt: '',
-      encounterIndex: 0, unlockedCompanionIds: ['mira'], ownedEquipment: [], resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {},
+      encounterIndex: 0, unlockedCompanionIds: ['mira'], ownedEquipment: [], resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {}, scriptFlags: {}, completedScriptIds: [],
     } })
     const r = gameReducer(input, { type: 'TodoCompleted', todo: todo('high') })
     expect(r.effects.find((e) => e.type === 'victory')).toBeUndefined()
@@ -262,7 +262,7 @@ function questInput(encounterIndex: number, monsterOver: Partial<Monster> = {}) 
     gameState: {
       partyIds: ['player', 'mira'], enemies: [makeMonster({ hp: 50, ...monsterOver })], storyStage: 0,
       buffs: [], moodFlags: {}, lastResolvedAt: '',
-      encounterIndex, unlockedCompanionIds: ['mira'], ownedEquipment: [], resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {},
+      encounterIndex, unlockedCompanionIds: ['mira'], ownedEquipment: [], resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {}, scriptFlags: {}, completedScriptIds: [],
       activeWorldId: 'stargazers', activeQuestId: 'q1',
     },
   })
@@ -308,7 +308,7 @@ describe('gameReducer · habit buffs (untilVictory)', () => {
           { id: 'run', kind: 'defPct', magnitude: 0.2, untilVictory: true },
           { id: 'skill', kind: 'atkPct', magnitude: 0.1, turnsLeft: 3 },
         ],
-        combatLog: [], charge: {}, roundPlan: {},
+        combatLog: [], charge: {}, roundPlan: {}, scriptFlags: {}, completedScriptIds: [],
       },
     })
 
@@ -329,7 +329,7 @@ describe('gameReducer · habit buffs (untilVictory)', () => {
           { id: 'run', kind: 'defPct', magnitude: 0.2, untilVictory: true },
           { id: 'skill', kind: 'atkPct', magnitude: 0.1, turnsLeft: 1 },
         ],
-        combatLog: [], charge: {}, roundPlan: {},
+        combatLog: [], charge: {}, roundPlan: {}, scriptFlags: {}, completedScriptIds: [],
       },
     })
     const r = gameReducer(input, { type: 'TodoCompleted', todo: todo('low') })

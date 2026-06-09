@@ -26,8 +26,8 @@
 
   /* Ink */
   --ink: #f6f1df;          /* cream-white text */
-  --ink-dim: #aab2e0;      /* periwinkle muted (tinted, never gray) */
-  --muted: #aab2e0;        /* alias used by inline component styles */
+  --ink-dim: #c6ccf0;      /* periwinkle muted (tinted, never gray) — ≥4.5:1 AA on the --win-1 gradient top */
+  --muted: #c6ccf0;        /* alias used by inline component styles (kept in sync with --ink-dim) */
   --gold: #f4c64e;         /* titles / selection / level */
 
   /* Status (harmonized to the world) */
@@ -87,6 +87,7 @@ input, select, textarea { font-family: inherit; }
 
 .topbar {
   display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  flex-wrap: wrap; row-gap: 8px;
   padding: 12px 20px; border-bottom: 2px solid var(--outline);
   background: linear-gradient(180deg, rgba(29, 40, 104, 0.6), transparent);
 }
@@ -95,14 +96,23 @@ input, select, textarea { font-family: inherit; }
   white-space: nowrap; text-shadow: 2px 2px 0 var(--outline);
 }
 .brand small { color: var(--ink-dim); font-size: 11px; margin-left: 10px; letter-spacing: 0; text-shadow: none; }
-.topbar-actions { display: flex; gap: 10px; align-items: center; flex: none; }
+.topbar-actions { display: flex; gap: 10px; align-items: center; flex: 1 1 auto; flex-wrap: wrap; justify-content: flex-end; }
+/* Group the global tools (存档/设置) and divide them from the identity chips so the right cluster reads. */
+.topbar-tools { display: inline-flex; gap: 10px; align-items: center; padding-left: 12px; border-left: 2px solid rgba(241, 231, 198, 0.18); }
+@media (max-width: 560px) { .topbar-tools { border-left: none; padding-left: 0; } }
 
 .dashboard {
   flex: 1; display: grid; grid-template-columns: 1fr 1.08fr; gap: 18px;
   padding: 20px; max-width: 1180px; width: 100%; margin: 0 auto; align-items: start;
 }
 .col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
-@media (max-width: 860px) { .dashboard { grid-template-columns: 1fr; } }
+/* Tablet (720-1180) keeps the two columns; only真正窄屏 stacks. Stacked, the chat drops its fixed
+   500px so it doesn't reserve a tall empty void above the fold. */
+@media (max-width: 720px) {
+  .dashboard { grid-template-columns: 1fr; }
+  .chat { height: auto; min-height: 280px; }
+  .messages { min-height: 160px; max-height: 52vh; }
+}
 
 /* ---------- Panels ---------- */
 .panel {
@@ -142,7 +152,12 @@ input, select, textarea { font-family: inherit; }
 .btn:active { transform: translateY(3px); box-shadow: 0 0 0 2px var(--outline); }
 .btn-primary { background: linear-gradient(180deg, #f3cb63, #c79a35); border-color: var(--frame); color: #2a1d05; text-shadow: 1px 1px 0 rgba(255, 255, 255, 0.35); }
 .btn-ghost { background: linear-gradient(180deg, rgba(74, 92, 171, 0.5), rgba(40, 53, 112, 0.5)); }
+.btn-danger { background: linear-gradient(180deg, rgba(239, 90, 76, 0.28), rgba(122, 30, 30, 0.34)); border-color: var(--hp); color: #ffd9d4; }
 .btn:disabled { opacity: 0.45; cursor: not-allowed; transform: none; }
+
+/* Settings "danger zone" — separates 清空数据 (destructive) from the benign backup buttons. */
+.danger-zone { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 12px; padding-top: 12px; border-top: 1px dashed rgba(239, 90, 76, 0.45); }
+.danger-note { flex: 1; min-width: 150px; font-size: 11px; color: var(--ink-dim); line-height: 1.5; }
 
 .chip {
   font-family: var(--font-pixel); font-size: 11px; padding: 6px 11px;
@@ -161,6 +176,20 @@ input, select, textarea { font-family: inherit; }
 .input::placeholder { color: var(--ink-dim); opacity: 0.7; }
 .input:focus, .select:focus, .textarea:focus { outline: none; border-color: var(--gold); }
 
+/* Keyboard-only focus ring (gold = the existing selection language). :focus-visible never fires on
+   mouse clicks, so the SNES look is untouched while keyboard users can finally see where they are. */
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.input:focus-visible, .select:focus-visible, .textarea:focus-visible { outline: 2px solid var(--gold); outline-offset: 0; }
+
+/* Custom gold chevron so the native <select> matches the pixel chrome instead of an OS triangle. */
+.select {
+  appearance: none; -webkit-appearance: none; padding-right: 30px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath d='M2.5 4.5l3.5 3.5 3.5-3.5' fill='none' stroke='%23f4c64e' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 11px center; background-size: 11px;
+}
+/* Date field digits in the pixel font, so mm/dd/yyyy reads as part of the frame, not browser chrome. */
+.input[type='date']::-webkit-datetime-edit { font-family: var(--font-pixel); font-size: 12px; }
+
 /* ---------- Todos (menu rows with ▸ cursor) ---------- */
 .todo-add { display: grid; grid-template-columns: 1fr auto auto auto; gap: 9px; margin-bottom: 14px; }
 @media (max-width: 520px) { .todo-add { grid-template-columns: 1fr; } }
@@ -168,6 +197,13 @@ input, select, textarea { font-family: inherit; }
 .date-field { display: inline-flex; align-items: center; gap: 6px; }
 .date-label { font-size: 11px; color: var(--ink-dim); white-space: nowrap; }
 .date-field .input { width: auto; }
+/* Native <input type=date> shows the OS-locale "mm/dd/yyyy"; hide its digits and overlay a zh string
+   ("6月9日") so the field reads Chinese. The input stays interactive (the calendar icon still opens it). */
+.date-proxy { position: relative; display: inline-flex; }
+.date-native { color: transparent; }
+.date-native::-webkit-datetime-edit { color: transparent; }
+.date-shown { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); pointer-events: none; font-size: 13px; color: var(--ink); white-space: nowrap; }
+.date-shown.placeholder { color: var(--ink-dim); opacity: 0.7; }
 
 .todo-list { display: flex; flex-direction: column; gap: 7px; }
 .todo-empty { color: var(--ink-dim); font-size: 13px; padding: 16px; text-align: center; line-height: 1.6; }
@@ -198,11 +234,13 @@ input, select, textarea { font-family: inherit; }
 .todo-item.done .todo-title { text-decoration: line-through; }
 .todo-meta { font-size: 11px; color: var(--ink-dim); display: flex; gap: 9px; align-items: center; margin-top: 3px; }
 .overdue-tag { color: var(--prio-high); }
-.pips { display: inline-flex; gap: 3px; }
+.pips { display: inline-flex; gap: 3px; align-items: center; }
 .pip { width: 6px; height: 6px; border-radius: 1px; background: rgba(170, 178, 224, 0.25); box-shadow: 0 0 0 1px var(--outline); }
 .pip.on.high { background: var(--prio-high); }
 .pip.on.med { background: var(--prio-med); }
 .pip.on.low { background: var(--prio-low); }
+/* Visible priority word so the dots aren't a guess (the dots stay as the at-a-glance colour cue). */
+.pip-label { margin-left: 3px; font-size: 10px; color: var(--ink-dim); }
 .todo-del { color: var(--ink-dim); background: none; border: none; font-size: 17px; padding: 0 2px; }
 .todo-del:hover { color: var(--hp); }
 .todo-edit-btn { color: var(--ink-dim); background: none; border: none; font-size: 14px; padding: 0 2px; }
@@ -319,16 +357,16 @@ input, select, textarea { font-family: inherit; }
   border-top: 2px solid rgba(246, 239, 210, 0.3);
   box-shadow: inset 0 2px 0 rgba(255, 255, 255, 0.06);
 }
-.party-side { position: absolute; left: 5%; bottom: 12%; display: flex; gap: 20px; align-items: flex-end; z-index: 2; }
-.enemy-side { position: absolute; right: 6%; bottom: 14%; z-index: 2; display: flex; gap: 12px; align-items: flex-end; justify-content: flex-end; }
+.party-side { position: absolute; left: 13%; bottom: 12%; display: flex; gap: 22px; align-items: flex-end; z-index: 2; }
+.enemy-side { position: absolute; right: 13%; bottom: 14%; z-index: 2; display: flex; gap: 12px; align-items: flex-end; justify-content: flex-end; }
 
 /* One on-field enemy (multi-enemy team): sprite + name + its own compact HP bar. */
-.enemy-card { position: relative; width: 88px; text-align: center; animation: bob 2.8s ease-in-out infinite; }
+.enemy-card { position: relative; width: 98px; text-align: center; animation: bob 2.8s ease-in-out infinite; }
 .enemy-card:nth-child(2) { animation-delay: 0.5s; }
 .enemy-card:nth-child(3) { animation-delay: 1s; }
-.enemy-card-sprite { font-size: 58px; line-height: 1; filter: drop-shadow(0 5px 0 rgba(0, 0, 0, 0.45)); }
+.enemy-card-sprite { font-size: 70px; line-height: 1; filter: drop-shadow(0 5px 0 rgba(0, 0, 0, 0.45)); }
 .enemy-card-sprite.low { animation: hurt 1.6s steps(2) infinite; }
-.enemy-card-shadow { width: 52px; height: 11px; margin: 1px auto 4px; border-radius: 50%; background: radial-gradient(ellipse, rgba(0, 0, 0, 0.5), transparent 70%); }
+.enemy-card-shadow { width: 60px; height: 12px; margin: 1px auto 4px; border-radius: 50%; background: radial-gradient(ellipse, rgba(0, 0, 0, 0.5), transparent 70%); }
 .enemy-card-name { font-family: var(--font-pixel); font-size: 10px; color: var(--ink); text-shadow: 1px 1px 0 var(--outline); white-space: nowrap; margin-bottom: 4px; }
 .enemy-card-lv { color: var(--gold); }
 .enemy-card-hp { height: 13px; }
@@ -341,13 +379,16 @@ input, select, textarea { font-family: inherit; }
 .enemy-card.current-target { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 8px; }
 .enemy-card.current-target .enemy-card-name { color: var(--gold); }
 
-.bsprite { width: 66px; text-align: center; animation: bob 3.4s ease-in-out infinite; }
+.bsprite { width: 80px; text-align: center; animation: bob 3.4s ease-in-out infinite; }
 .bsprite:nth-child(2) { animation-delay: 0.6s; }
 .bsprite:nth-child(3) { animation-delay: 1.1s; }
-.bsprite-body { font-size: 40px; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.4)); }
+.bsprite-body { font-size: 52px; filter: drop-shadow(0 3px 0 rgba(0, 0, 0, 0.4)); }
+/* Real-art party token (head-crop or pixel sprite) — a gold-framed combat portrait, not an emoji. */
+.bsprite-body.has-art { line-height: 0; filter: none; }
+.bsprite-art { width: 62px; height: 62px; object-fit: cover; border-radius: 9px; border: 2px solid var(--frame-gold); background: var(--win-sunken); box-shadow: 0 0 0 2px var(--outline), inset 0 0 0 1px rgba(255, 255, 255, 0.15); }
 /* Planned-action badge above the sprite (Octopath "command over the head"). */
 .bsprite-action { display: inline-block; max-width: 64px; margin-bottom: 3px; padding: 1px 5px; font-family: var(--font-pixel); font-size: 8px; color: var(--gold); background: linear-gradient(180deg, rgba(244, 198, 78, 0.22), rgba(199, 154, 53, 0.22)); border: 1px solid rgba(244, 198, 78, 0.5); border-radius: 999px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 1px 1px 0 var(--outline); }
-.bsprite-shadow { width: 40px; height: 9px; margin: 0 auto; border-radius: 50%; background: radial-gradient(ellipse, rgba(0, 0, 0, 0.45), transparent 70%); }
+.bsprite-shadow { width: 50px; height: 10px; margin: 0 auto; border-radius: 50%; background: radial-gradient(ellipse, rgba(0, 0, 0, 0.45), transparent 70%); }
 .bsprite-name { font-family: var(--font-pixel); font-size: 10px; color: var(--ink); margin-top: 5px; text-shadow: 1px 1px 0 var(--outline); white-space: nowrap; }
 .bsprite-lv { color: var(--gold); }
 .bsprite.downed { opacity: 0.5; filter: grayscale(0.7); animation: none; }
@@ -509,10 +550,10 @@ input, select, textarea { font-family: inherit; }
   background: var(--win-sunken); border-bottom: 2px solid var(--outline);
 }
 /* Turn-order bar — the speed-ordered forecast of who acts next (laps marked). */
-.turn-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin: 12px 17px 0; padding: 8px 11px; background: var(--win-sunken); border: 2px solid var(--frame); box-shadow: 0 0 0 2px var(--outline), inset 0 2px 5px rgba(0, 0, 0, 0.45); border-radius: 7px; }
+.turn-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 5px; margin: 10px 17px 0; padding: 6px 10px; background: rgba(10, 13, 40, 0.34); border: 1px solid rgba(241, 231, 198, 0.14); border-radius: 7px; }
 .turn-bar-label { font-family: var(--font-pixel); font-size: 10px; color: var(--gold); margin-right: 3px; text-shadow: 1px 1px 0 var(--outline); }
 .turn-arrow { color: var(--ink-dim); font-size: 12px; }
-.turn-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 7px; border-radius: 999px; border: 1px solid rgba(241, 231, 198, 0.3); background: linear-gradient(180deg, rgba(74, 92, 171, 0.55), rgba(40, 53, 112, 0.55)); }
+.turn-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 7px; border-radius: 999px; border: 1px solid rgba(241, 231, 198, 0.16); background: rgba(74, 92, 171, 0.32); }
 .turn-chip.enemy { background: linear-gradient(180deg, rgba(239, 90, 76, 0.28), rgba(120, 30, 30, 0.28)); border-color: rgba(239, 90, 76, 0.5); }
 .turn-chip.lap { border-color: var(--gold); box-shadow: 0 0 0 1px rgba(244, 198, 78, 0.45); }
 .turn-chip.current { border-color: var(--gold); background: linear-gradient(180deg, rgba(244, 198, 78, 0.34), rgba(199, 154, 53, 0.34)); box-shadow: 0 0 0 2px rgba(244, 198, 78, 0.5); } /* whose turn it is */
@@ -595,13 +636,43 @@ input, select, textarea { font-family: inherit; }
 .rp-text { font-size: 13px; line-height: 1.55; }
 .affinity-float { color: var(--affinity); font-family: var(--font-pixel); font-size: 11px; margin-left: 8px; }
 
+/* ---------- Chat switcher (avatar selector that replaces the companion card) ---------- */
+.chat-switcher-panel { padding: 12px 14px; }
+.chat-switcher { display: flex; align-items: center; gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.switch-avatar {
+  flex: none; padding: 0; background: none; border: none; box-shadow: none; cursor: pointer;
+  border-radius: 9px; transition: filter 0.12s;
+}
+.switch-avatar .portrait { width: 46px; height: 46px; border-radius: 9px; }
+.switch-avatar .portrait-name { display: none; }
+.switch-avatar .portrait-emoji { font-size: 26px; }
+.switch-avatar:not(.on) { filter: saturate(0.82) brightness(0.9); }
+.switch-avatar:hover:not(:disabled) { filter: none; }
+.switch-avatar.on .portrait { border-color: var(--gold); box-shadow: 0 0 0 2px var(--gold), inset 0 0 0 1px rgba(216, 178, 90, 0.25); }
+.switch-avatar:disabled { opacity: 0.5; cursor: not-allowed; }
+.cs-sep { flex: none; width: 2px; align-self: stretch; margin: 4px 2px; background: rgba(241, 231, 198, 0.18); border-radius: 1px; }
+.switch-group {
+  flex: none; font-family: var(--font-pixel); font-size: 11px; color: var(--ink);
+  background: linear-gradient(180deg, var(--win-1), var(--win-2));
+  border: 2px solid var(--frame); border-radius: 999px; padding: 8px 13px;
+  box-shadow: 0 0 0 2px var(--outline); text-shadow: 1px 1px 0 var(--outline); white-space: nowrap; cursor: pointer;
+}
+.switch-group.on { color: var(--gold); border-color: var(--gold); }
+.switch-group:disabled { opacity: 0.45; cursor: not-allowed; }
+.chat-switcher-meta { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.cs-name { font-size: 12px; color: var(--gold); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.affinity-line { display: flex; align-items: center; gap: 8px; margin-left: auto; flex: none; }
+.affinity-line .affinity-rank { font-size: 11px; }
+.affinity-bar-thin { width: 120px; height: 6px; flex: none; border-radius: 4px; }
+
 /* ---------- Chat (FF dialogue boxes) ---------- */
-.chat { display: flex; flex-direction: column; height: 430px; }
+.chat { display: flex; flex-direction: column; height: 500px; }
 .messages { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 10px; padding-right: 6px; }
 .msg { max-width: 82%; padding: 9px 12px; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-break: break-word; border: 2px solid var(--frame); box-shadow: 0 0 0 2px var(--outline); }
 .msg.player { align-self: flex-end; background: linear-gradient(180deg, #f3cb63, #c79a35); color: #2a1d05; border-radius: 8px 8px 2px 8px; }
 .msg.bot { align-self: flex-start; background: linear-gradient(180deg, var(--win-1), var(--win-2)); border-radius: 8px 8px 8px 2px; }
 .msg.system { align-self: center; color: var(--ink-dim); font-size: 12px; border: none; box-shadow: none; background: none; text-align: center; line-height: 1.6; }
+.msg-speaker { font-family: var(--font-pixel); font-size: 11px; color: var(--gold); margin-bottom: 4px; text-shadow: 1px 1px 0 var(--outline); }
 .thinking { align-self: flex-start; color: var(--ink-dim); font-size: 13px; display: flex; gap: 5px; align-items: center; }
 .dot { width: 6px; height: 6px; background: var(--gold); border-radius: 1px; animation: blink 1.2s infinite; }
 .dot:nth-child(2) { animation-delay: 0.2s; } .dot:nth-child(3) { animation-delay: 0.4s; }
@@ -643,18 +714,30 @@ input, select, textarea { font-family: inherit; }
 .class-card { text-align: left; padding: 11px 13px 11px 22px; border-radius: 7px; border: 2px solid rgba(241, 231, 198, 0.28); background: var(--win-row); position: relative; box-shadow: 0 0 0 2px var(--outline); }
 .class-card::before { content: '▸'; position: absolute; left: 8px; top: 12px; color: var(--gold); opacity: 0; transition: opacity 0.12s; }
 .class-card:hover { border-color: var(--frame-gold); }
+.class-card:hover::before { opacity: 0.55; }
 .class-card.selected { border-color: var(--gold); background: rgba(65, 83, 158, 0.4); }
 .class-card.selected::before { opacity: 1; animation: blinkCursor 0.9s steps(1) infinite; }
 @keyframes blinkCursor { 0%, 50% { opacity: 1; } 51%, 100% { opacity: 0.2; } }
 .class-card .cc-name { font-family: var(--font-pixel); font-size: 12px; color: var(--ink); }
 .class-card .cc-blurb { font-size: 11px; color: var(--ink-dim); margin-top: 4px; line-height: 1.5; }
 .modal-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; }
+/* Onboarding CTA: one centred column — a prominent 开始冒险, with the import as a subtle link below. */
+.onboard-actions { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: 22px; }
+.onboard-start { min-width: 200px; font-size: 14px; padding: 11px 28px; }
+.onboard-import { background: none; border: none; box-shadow: none; color: var(--ink-dim); font-size: 11px; text-decoration: underline; text-underline-offset: 2px; cursor: pointer; padding: 2px; }
+.onboard-import:hover:not(:disabled) { color: var(--ink); }
+.onboard-import:disabled { opacity: 0.5; cursor: not-allowed; }
 .disclosure { font-size: 11px; color: var(--ink-dim); line-height: 1.6; }
 .key-status { font-size: 12px; margin-top: 7px; }
 .key-status.ok { color: var(--good); } .key-status.err { color: var(--hp); }
 
-.recruit-modal { max-width: 460px; }
+.recruit-modal { max-width: 560px; }
 .recruit-body { display: flex; gap: 16px; align-items: center; margin: 4px 0 6px; }
+.recruit-fullbody-wrap {
+  width: 180px; height: 300px; flex: none; overflow: hidden; display: flex; align-items: flex-end; justify-content: center;
+  border-bottom: 1px solid rgba(216, 178, 90, 0.3);
+}
+.fullbody-art { width: 100%; height: 100%; object-fit: contain; object-position: center bottom; display: block; }
 .recruit-info { flex: 1; min-width: 0; }
 .recruit-name { font-family: var(--font-pixel); font-size: 16px; color: var(--gold); text-shadow: 1px 1px 0 var(--outline); }
 .recruit-blurb { font-size: 12px; color: var(--ink-dim); line-height: 1.7; margin: 8px 0 0; }
@@ -715,7 +798,12 @@ input, select, textarea { font-family: inherit; }
 .party-id:hover { background: rgba(244, 198, 78, 0.12); }
 
 /* ---------- Character detail sheet (modal) ---------- */
-.sheet-modal { max-width: 460px; width: 100%; text-align: left; }
+.sheet-modal { max-width: 560px; width: 100%; max-height: calc(100vh - 32px); overflow-y: auto; text-align: left; }
+.sheet-fullbody-wrap {
+  height: 300px; margin: -12px 0 12px; overflow: hidden; display: flex; align-items: flex-end; justify-content: center;
+  border-bottom: 1px solid rgba(216, 178, 90, 0.3);
+}
+.sheet-fullbody-wrap .fullbody-art { max-width: 300px; }
 .sheet-head { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 14px; }
 .sheet-head .portrait { width: 64px; }
 .sheet-id { flex: 1; min-width: 0; }
@@ -926,6 +1014,30 @@ input, select, textarea { font-family: inherit; }
 .buff-card-desc { font-size: 12px; color: var(--ink-dim); line-height: 1.5; }
 @media (max-width: 520px) { .buff-choice-grid { grid-template-columns: 1fr; } }
 
+/* §23 post-boss branch choice (mandatory — no skip) + the campaign-complete prompt */
+.script-choice-modal { max-width: 600px; }
+.script-choice-prompt { color: var(--ink); font-size: 14px; line-height: 1.7; margin: 0 0 18px; }
+.script-choice-grid { display: grid; grid-template-columns: 1fr; gap: 10px; }
+.script-choice-card {
+  display: flex; flex-direction: column; gap: 5px; text-align: left; cursor: pointer;
+  padding: 14px 16px; color: var(--ink); background: var(--win-sunken); border: 2px solid var(--frame); border-radius: 8px;
+  box-shadow: 0 0 0 2px var(--outline), inset 0 2px 5px rgba(0, 0, 0, 0.4); transition: border-color 0.12s, transform 0.12s;
+}
+.script-choice-card:hover { border-color: var(--gold); transform: translateY(-2px); }
+.script-choice-label { font-family: var(--font-pixel); font-size: 14px; color: var(--gold); text-shadow: 1px 1px 0 var(--outline); }
+.script-choice-desc { font-size: 12px; color: var(--ink-dim); line-height: 1.55; }
+.dungeon-flags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.dungeon-flag { font-size: 11px; color: var(--ink-dim); background: var(--win-sunken); border: 1px solid var(--frame); border-radius: 5px; padding: 2px 7px; }
+.dungeon-save-row { display: flex; gap: 8px; margin-top: 10px; }
+.dungeon-save-row .input { flex: 1; }
+.dungeon-list { list-style: none; margin: 12px 0 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.dungeon-card { background: var(--win-sunken); border: 2px solid var(--frame); border-radius: 8px; box-shadow: 0 0 0 2px var(--outline); padding: 12px 14px; }
+.dungeon-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.dungeon-label { font-family: var(--font-pixel); font-size: 13px; color: var(--gold); text-shadow: 1px 1px 0 var(--outline); }
+.dungeon-date { font-size: 11px; color: var(--ink-dim); }
+.dungeon-synopsis { font-size: 12px; color: var(--ink-dim); line-height: 1.55; margin-top: 6px; }
+.dungeon-actions { display: flex; gap: 8px; margin-top: 10px; }
+
 /* ---------- Responsive ---------- */
 @media (max-width: 560px) {
   .topbar { padding: 10px 14px; }
@@ -938,13 +1050,19 @@ input, select, textarea { font-family: inherit; }
   .toast { min-width: 0; max-width: none; }
   .stage-scene { height: 200px; }
   .monster-sprite { font-size: 66px; }
-  .party-side { gap: 12px; left: 6%; }
-  .bsprite { width: 54px; }
-  .bsprite-body { font-size: 32px; }
-  .enemy-side { gap: 7px; right: 4%; }
-  .enemy-card { width: 64px; }
-  .enemy-card-sprite { font-size: 42px; }
+  .party-side { gap: 12px; left: 9%; }
+  .bsprite { width: 56px; }
+  .bsprite-body { font-size: 34px; }
+  .enemy-side { gap: 7px; right: 9%; }
+  .enemy-card { width: 70px; }
+  .enemy-card-sprite { font-size: 46px; }
   .enemy-card-name { font-size: 9px; }
+  /* Touch targets ≥44px for the cramped nav rows on phones. */
+  .tabbar button, .zone-switch button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }
+  .recruit-modal { max-height: calc(100vh - 32px); overflow-y: auto; }
+  .recruit-body { align-items: flex-start; }
+  .recruit-fullbody-wrap { width: 125px; height: 230px; }
+  .sheet-fullbody-wrap { height: 250px; }
 }
 
 @media (prefers-reduced-motion: reduce) {

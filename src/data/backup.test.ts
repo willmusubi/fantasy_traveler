@@ -9,9 +9,9 @@ import { closeDb } from './db'
 import { affinityRepo, charactersRepo, gameStateRepo, habitsRepo, journalRepo, todosRepo } from './repositories'
 
 const EMPTY: BackupPayload = {
-  app: 'fantasy-traveler', dbVersion: 3, exportedAt: '',
+  app: 'fantasy-traveler', dbVersion: 4, exportedAt: '',
   characters: [], todos: [], journalEntries: [], calendarEvents: [], affinity: [],
-  chatThreads: [], chatMessages: [], quests: [], habits: [], gameState: null, settings: null, meta: null,
+  chatThreads: [], chatMessages: [], quests: [], habits: [], dungeons: [], gameState: null, settings: null, meta: null,
 }
 
 const player: Character = {
@@ -27,7 +27,7 @@ const gameState: GameState = {
   partyIds: ['p', 'mira'],
   enemies: [{ id: 'm', nameKey: 'monster.procrastination', level: 1, maxHp: 400, hp: 400, atk: 14, def: 10, spd: 9, growth: 1 }],
   storyStage: 2, buffs: [], moodFlags: {}, lastResolvedAt: '', encounterIndex: 0,
-  unlockedCompanionIds: ['mira'], ownedEquipment: [], resources: {}, gold: 42, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {},
+  unlockedCompanionIds: ['mira'], ownedEquipment: [], resources: {}, gold: 42, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {}, scriptFlags: {}, completedScriptIds: [],
 }
 
 async function seed() {
@@ -52,7 +52,7 @@ describe('backup export/import', () => {
     await seed()
     const p = await exportAll()
     expect(p.app).toBe('fantasy-traveler')
-    expect(p.dbVersion).toBe(3)
+    expect(p.dbVersion).toBe(8)
     expect(p.characters).toHaveLength(1)
     expect(p.todos).toHaveLength(1)
     expect(p.habits).toHaveLength(1)

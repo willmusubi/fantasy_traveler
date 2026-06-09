@@ -194,14 +194,14 @@ export const CLASS_DEFS: Record<ClassId, ClassDef> = {
   tactician: {
     id: 'tactician',
     nameKey: 'class.tactician',
-    role: '控制·攻辅',
+    role: '控制/攻辅',
     base: { maxHp: 90, maxMp: 56, atk: 10, def: 9, spd: 14, mag: 16 },
     growth: { maxHp: 10, maxMp: 6, atk: 2, def: 1, spd: 2, mag: 2 },
   },
   medic: {
     id: 'medic',
     nameKey: 'class.medic',
-    role: '治疗·辅助',
+    role: '治疗/辅助',
     base: { maxHp: 100, maxMp: 60, atk: 8, def: 12, spd: 10, mag: 17 },
     growth: { maxHp: 12, maxMp: 7, atk: 1, def: 2, spd: 1, mag: 2 },
   },

@@ -8,10 +8,13 @@ import { getDB, SINGLETON } from '../data/db'
 import { withGameStateDefaults } from '../data/repositories'
 import { COMBAT_LOG_CAP } from '../domain/config'
 import { localDateKey } from '../domain/dates'
+import { materializeQuest } from '../ai/storyline'
 import { buildLogEntry } from './combatLog'
+import { teamFromEncounter } from './combat'
 import { withStatsDefaults } from './leveling'
 import type { Affinity, Character } from '../domain/types'
 import { activeSynergiesFor } from '../world/relationships'
+import { scriptDefFor } from '../world/worlds'
 import type { DomainEvent } from './events'
 import { gameReducer, type ReducerResult } from './reducer'
 
@@ -58,6 +61,9 @@ export async function dispatchEvent(
   const affList = await affStore.getAll()
   const todos = await todoStore.getAll()
   const quest = gameState.activeQuestId ? await questStore.get(gameState.activeQuestId) : undefined
+  // §23: the active branching script (resolved from content), threaded into the pure reducer so it
+  // can read chapter transitions; also used below to materialize the next chapter on advance.
+  const script = gameState.activeScriptId ? scriptDefFor(gameState.activeScriptId) : undefined
 
   const party = gameState.partyIds
     .map((id) => characters.find((c) => c.id === id))
@@ -82,6 +88,7 @@ export async function dispatchEvent(
       ownedEquipment: gameState.ownedEquipment ?? [],
       activeSynergies,
       quest,
+      script,
     },
     event,
   )
@@ -128,6 +135,18 @@ export async function dispatchEvent(
       await affStore.put(freshAffinity(e.companionId, today))
     } else if (e.type === 'questCompleted' && quest) {
       await questStore.put({ ...quest, status: 'completed' })
+    } else if (e.type === 'scriptChapterAdvanced' && script) {
+      // §23: materialize the next chapter into a Quest + spawn its first encounter, in THIS tx
+      // (the pure reducer set the chapter pointer but has no quest data to spawn). Mirrors
+      // questStore.startQuest's open sequence: write the quest, set activeQuestId + enemies.
+      const ch = script.chapters[e.chapterId]
+      if (ch) {
+        const nextQuest = materializeQuest(ch, script.worldId, now2, newId, '')
+        await questStore.put(nextQuest)
+        const enemies = teamFromEncounter(nextQuest.encounters[0], result.gameState.storyStage, openHighCount, newId)
+        result.gameState = { ...result.gameState, activeQuestId: nextQuest.id, enemies, clearedEncounterKey: undefined }
+        await gsStore.put(result.gameState, SINGLETON)
+      }
     }
   }
 

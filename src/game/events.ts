@@ -14,6 +14,8 @@ export type DomainEvent =
   // Interactive (FF-style) combat round, driven by the RoundResolver overlay.
   | { type: 'RoundBegan'; todo: Todo }
   | { type: 'RoundAdvanced'; choice?: SkillId | 'basic'; auto?: boolean; targetId?: ID }
+  // Script branching (§23): the player picked a post-boss option in the ScriptChoiceModal.
+  | { type: 'ScriptChoicePicked'; optionId: string }
 
 export type DomainEventType = DomainEvent['type']
 

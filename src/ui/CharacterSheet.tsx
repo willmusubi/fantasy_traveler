@@ -9,6 +9,7 @@ import { t } from '../i18n'
 import { useGame } from '../state/gameStore'
 import { EQUIPMENT_DEFS } from '../world/equipment'
 import { activeSynergiesFor } from '../world/relationships'
+import { FullbodyArt } from './FullbodyArt'
 import { Portrait } from './Portrait'
 
 const STAT_KEYS: (keyof Stats)[] = ['atk', 'def', 'spd', 'mag']
@@ -59,6 +60,11 @@ export function CharacterSheet({ characterId, onClose }: { characterId: string; 
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal sheet-modal" onClick={(e) => e.stopPropagation()}>
+        {isCompanion && (
+          <div className="sheet-fullbody-wrap">
+            <FullbodyArt portraitSet={char.portraitSet} name={char.name} />
+          </div>
+        )}
         <div className="sheet-head">
           <Portrait portraitSet={char.portraitSet} expression={char.persona?.defaultExpression ?? 'neutral'} name={char.name} />
           <div className="sheet-id">

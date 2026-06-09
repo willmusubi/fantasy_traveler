@@ -2,7 +2,11 @@
 // selection, cache_control prefix, timeout, structured tool-use parsing, error
 // classification. The chat store maps errors to a canned in-character fallback.
 
-import Anthropic from '@anthropic-ai/sdk'
+// Type-only import → elided at build, so the ~SDK never lands in the eager main chunk. The actual
+// constructor is pulled in via dynamic import() inside makeClient, only when a call is made (chat /
+// testKey). This keeps the Anthropic SDK out of every first-paint download (it's only needed once
+// the user actually chats or validates a key).
+import type AnthropicClient from '@anthropic-ai/sdk'
 import { coerceExpression } from '../companion/expressions'
 import { CHAT_MAX_TOKENS, CHAT_TIMEOUT_MS, DEFAULT_MODEL } from '../domain/config'
 import type { ExpressionKey } from '../domain/types'
@@ -37,7 +41,8 @@ export interface ChatRequest {
   userMessage: string
 }
 
-function makeClient(apiKey: string): Anthropic {
+async function makeClient(apiKey: string): Promise<AnthropicClient> {
+  const { default: Anthropic } = await import('@anthropic-ai/sdk')
   return new Anthropic({ apiKey, dangerouslyAllowBrowser: true })
 }
 
@@ -62,7 +67,7 @@ export function buildSystemBlocks(systemPrompt: string, contextBlock: string) {
 export async function chat(req: ChatRequest): Promise<ChatReply> {
   if (!req.apiKey) throw new AIError('no-key', '尚未设置 API Key')
 
-  const client = makeClient(req.apiKey)
+  const client = await makeClient(req.apiKey)
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS)
 
@@ -111,7 +116,7 @@ export async function chat(req: ChatRequest): Promise<ChatReply> {
 export async function testKey(apiKey: string, model = DEFAULT_MODEL): Promise<AIErrorKind | null> {
   if (!apiKey) return 'no-key'
   try {
-    const client = makeClient(apiKey)
+    const client = await makeClient(apiKey)
     await client.messages.create({
       model,
       max_tokens: 1,

@@ -118,6 +118,7 @@ describe('M0 end-to-end loop', () => {
     expect(loaded?.encounterIndex).toBe(0)
     expect(loaded?.unlockedCompanionIds).toEqual(['c1']) // companions in partyIds minus player
     expect(loaded?.ownedEquipment).toEqual([])
+    expect(loaded?.scriptFlags).toEqual({}) // §23 backfill
     expect(loaded?.enemies[0].spd).toBe(9) // enemy speed backfilled (synthesized from a legacy monster)
     expect(loaded?.storyStage).toBe(2) // existing data preserved
   })

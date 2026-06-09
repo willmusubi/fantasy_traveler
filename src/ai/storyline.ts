@@ -2,7 +2,8 @@
 // cache_control world-lore prefix, timeout, classify(). coerceQuest is the trust
 // boundary — the model can never grant rewards that don't exist in this world.
 
-import Anthropic from '@anthropic-ai/sdk'
+// The Anthropic SDK is dynamically imported inside generateStoryline (below) so it stays out of
+// the eager main chunk; mirrors ai/client.ts. No top-level import → no SDK in first paint.
 import { CHAT_TIMEOUT_MS, DEFAULT_MODEL } from '../domain/config'
 import type { Quest, QuestBlueprint, WorldId } from '../domain/types'
 import { getWorldEquipment } from '../world/equipment'
@@ -19,6 +20,9 @@ export interface StorylineRequest {
   rewardPool: string // text listing the allowed equipment + unlockable companions
   world: WorldDef
   unlockedCompanionIds: string[]
+  /** §23: rendered persistent story flags (already-decided facts), appended to the dynamic block so
+   *  improvised quests respect the player's branch choices. Optional — '' / undefined when no flags. */
+  scriptFacts?: string
 }
 
 function clamp(n: unknown, lo: number, hi: number): number {
@@ -102,6 +106,7 @@ export function materializeQuest(
 
 export async function generateStoryline(req: StorylineRequest): Promise<QuestBlueprint> {
   if (!req.apiKey) throw new AIError('no-key', '尚未设置 API Key')
+  const { default: Anthropic } = await import('@anthropic-ai/sdk')
   const client = new Anthropic({ apiKey: req.apiKey, dangerouslyAllowBrowser: true })
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), CHAT_TIMEOUT_MS)
@@ -115,7 +120,9 @@ export async function generateStoryline(req: StorylineRequest): Promise<QuestBlu
           { type: 'text', text: buildStorylineSystemPrompt() },
           {
             type: 'text',
-            text: `【可用奖励池】\n${req.rewardPool}\n\n【旅人现状】\n${req.playerContext}\n\n【当前同伴】\n${req.rosterContext}`,
+            text:
+              `【可用奖励池】\n${req.rewardPool}\n\n【旅人现状】\n${req.playerContext}\n\n【当前同伴】\n${req.rosterContext}` +
+              (req.scriptFacts ? `\n\n${req.scriptFacts}` : ''),
           },
         ],
         tools: [GENERATE_QUEST_TOOL],

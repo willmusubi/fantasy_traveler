@@ -32,7 +32,7 @@ function makeInput(party: Character[], gsOver: Partial<GameState> = {}): Reducer
     enemies: [makeMonster()],
     storyStage: 0, buffs: [], moodFlags: {}, lastResolvedAt: '',
     encounterIndex: 0, unlockedCompanionIds: party.filter((c) => c.kind === 'companion').map((c) => c.id),
-    ownedEquipment: [], resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {},
+    ownedEquipment: [], resources: {}, gold: 0, partyBuffs: [], combatLog: [], charge: {}, roundPlan: {}, scriptFlags: {}, completedScriptIds: [],
     ...gsOver,
   }
   const affinities: Record<string, Affinity> = {}

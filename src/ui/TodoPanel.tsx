@@ -6,13 +6,21 @@ import { partitionTodayTodos, useTodos } from '../state/todoStore'
 const PRIORITY_PIPS: Record<Priority, number> = { low: 1, med: 2, high: 3 }
 const PRIORITY_LABEL: Record<Priority, string> = { low: '低', med: '中', high: '高' }
 
+/** zh display for a native date-input value (yyyy-mm-dd) — the field reads "6月9日", not the OS's
+ *  US "mm/dd/yyyy". (The picker popup itself follows OS locale; that's unavoidable for a native input.) */
+function formatDueZh(due: string): string {
+  const [y, m, d] = due.split('-')
+  return y && m && d ? `${+m}月${+d}日` : due
+}
+
 function Pips({ priority }: { priority: Priority }) {
   const n = PRIORITY_PIPS[priority]
   return (
-    <span className="pips" title={`优先级：${PRIORITY_LABEL[priority]}`}>
+    <span className="pips" role="img" aria-label={`优先级：${PRIORITY_LABEL[priority]}`} title={`优先级：${PRIORITY_LABEL[priority]}`}>
       {[0, 1, 2].map((i) => (
         <span key={i} className={`pip ${i < n ? `on ${priority}` : ''}`} />
       ))}
+      <span className={`pip-label ${priority}`} aria-hidden>{PRIORITY_LABEL[priority]}</span>
     </span>
   )
 }
@@ -357,7 +365,10 @@ export function TodoPanel() {
         />
         <label className="date-field" title="截止日期（可选）">
           <span className="date-label">截止</span>
-          <input className="input" type="date" aria-label="截止日期（可选）" value={due} onChange={(e) => setDue(e.target.value)} />
+          <span className="date-proxy">
+            <input className="input date-native" type="date" aria-label="截止日期（可选）" value={due} onChange={(e) => setDue(e.target.value)} />
+            <span className={`date-shown ${due ? '' : 'placeholder'}`} aria-hidden>{due ? formatDueZh(due) : '未设置'}</span>
+          </span>
         </label>
         <select
           className="select"
@@ -375,7 +386,7 @@ export function TodoPanel() {
 
       <div className="todo-list">
         {todos.length === 0 && (
-          <div className="todo-empty">还没有待办。添加第一件事，和瞳一起出发吧！</div>
+          <div className="todo-empty">还没有待办。添加第一件事，和伙伴一起出发吧！</div>
         )}
         {todos.length > 0 && openCount === 0 && (
           <div className="todo-empty">今天的事都安排好啦 ✓（未来的任务在日历里查看）</div>
