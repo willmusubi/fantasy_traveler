@@ -3,18 +3,24 @@
 // your own cast, or generate them via your own workflow. (§8, §14, §21)
 
 import { LOCAL_PACK } from '../content/localPack'
-import { statsForClassAtLevel } from '../game/leveling'
-import type { Character, ClassId, CompanionPersona, ID, SkillId, WorldId } from '../domain/types'
+import { CLASS_TEMPLATE_MAP, COMPANION_PROFILES, PROFILE_TEMPLATES, TRAVELER_PROFILE } from '../domain/config'
+import { statsForProfileAtLevel } from '../game/leveling'
+import type { Character, ClassId, CompanionPersona, ID, SkillId, StatProfile, Stats, WorldId } from '../domain/types'
 
 export interface CompanionDef {
   id: string
   name: string
+  /** LEGACY archetype tag — kept so existing packs compile; maps to a profile template
+   *  when no explicit `profile` is authored. */
   classId: ClassId
   worldId: WorldId
   portraitSet: string
   brand: string
   skills: SkillId[]
   persona: CompanionPersona
+  /** §25 per-character stat profile (base+growth+weapons+element). Optional: shipped
+   *  characters resolve via COMPANION_PROFILES; legacy packs fall back to classId. */
+  profile?: StatProfile
   /** Player-facing detailed bio (shown in the character sheet + recruit modal). */
   bio: string
   /** In-character first-meeting lines, shown when this companion is recruited. Author
@@ -104,6 +110,43 @@ export const COMPANION_DEFS: Record<string, CompanionDef> = LOCAL_PACK?.companio
 /** The primary companion for M0 / first-bond focus. */
 export const PRIMARY_COMPANION_ID = LOCAL_PACK?.primaryCompanionId ?? 'mira'
 
+// ---------- §25 profile resolution ----------
+
+/** Resolve the StatProfile that governs a character's stats. Order:
+ *  player → TRAVELER_PROFILE (always; cross-world neutral all-rounder);
+ *  companion → pack-authored CompanionDef.profile → shipped COMPANION_PROFILES[id]
+ *            → legacy classId template → balanced. */
+export function profileFor(c: Pick<Character, 'kind' | 'id' | 'classId'>): StatProfile {
+  if (c.kind === 'player') return TRAVELER_PROFILE
+  return (
+    COMPANION_DEFS[c.id]?.profile ??
+    COMPANION_PROFILES[c.id] ??
+    PROFILE_TEMPLATES[CLASS_TEMPLATE_MAP[c.classId] ?? 'balanced']
+  )
+}
+
+/** Profile for a companion DEF (pre-instantiation), same fallback chain. */
+export function profileForDef(def: CompanionDef): StatProfile {
+  return def.profile ?? COMPANION_PROFILES[def.id] ?? PROFILE_TEMPLATES[CLASS_TEMPLATE_MAP[def.classId] ?? 'balanced']
+}
+
+/** §25 migration: legacy 8-stat records (atk/def/mag — no `str`) are rebuilt by EXACT
+ *  recompute from the owner's profile at their current level (stats were always
+ *  profile/class-derived; nothing manual to lose). level/xp survive; hp/mp resources
+ *  live in GameState.resources and stay valid (pools only ever grew or held).
+ *  Read-time + idempotent, like the gameState defaults. */
+export function withStatsDefaults(c: Character): Character {
+  const s = c.stats as Partial<Stats>
+  if (
+    s.str != null && s.vit != null && s.wis != null && s.spr != null &&
+    s.skl != null && s.hit != null && s.eva != null && s.maxMp != null
+  ) {
+    return c
+  }
+  const ref = statsForProfileAtLevel(profileFor(c), c.stats.level)
+  return { ...c, stats: { ...ref, level: c.stats.level, xp: c.stats.xp } }
+}
+
 export function createCompanionCharacter(defId: string, now: Date): Character {
   const def = COMPANION_DEFS[defId]
   if (!def) throw new Error(`Unknown companion def: ${defId}`)
@@ -113,7 +156,7 @@ export function createCompanionCharacter(defId: string, now: Date): Character {
     kind: 'companion',
     classId: def.classId,
     worldId: def.worldId,
-    stats: statsForClassAtLevel(def.classId, 1),
+    stats: statsForProfileAtLevel(profileForDef(def), 1),
     skills: def.skills,
     portraitSet: def.portraitSet,
     brand: def.brand,
@@ -122,18 +165,13 @@ export function createCompanionCharacter(defId: string, now: Date): Character {
   }
 }
 
-export function createPlayer(
-  name: string,
-  classId: ClassId,
-  now: Date,
-  newId: () => ID,
-): Character {
+export function createPlayer(name: string, now: Date, newId: () => ID): Character {
   return {
     id: newId(),
     name: name.trim() || '旅人',
     kind: 'player',
-    classId,
-    stats: statsForClassAtLevel(classId, 1),
+    classId: 'vanguard', // legacy sprite tag only — stats come from TRAVELER_PROFILE
+    stats: statsForProfileAtLevel(TRAVELER_PROFILE, 1),
     skills: [],
     portraitSet: 'player_default',
     createdAt: now.toISOString(),

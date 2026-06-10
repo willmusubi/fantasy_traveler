@@ -32,7 +32,7 @@ const companionId = () => useGame.getState().characters.find((c) => c.kind === '
 
 describe('character detail sheet', () => {
   it('lists a companion skill with its MP cost', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     render(<CharacterSheet characterId={companionId()} onClose={() => {}} />)
     expect(screen.getByText('流光击')).toBeInTheDocument() // 米拉's L1 skill
     expect(screen.getByText(/MP 8/)).toBeInTheDocument()
@@ -42,7 +42,7 @@ describe('character detail sheet', () => {
 
 describe('recruit modal', () => {
   it('greets a newly recruited companion with a first-meeting dialogue + bio', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     useGame.setState({ recruitedId: 'vela' })
     render(<RecruitModal />)
     expect(screen.getByText(/我是薇拉/)).toBeInTheDocument() // a first-meeting line
@@ -52,7 +52,7 @@ describe('recruit modal', () => {
 
 describe('reaction popup', () => {
   it('shows who is speaking (name + line + affinity) with a portrait', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     const c = useGame.getState().characters.find((ch) => ch.kind === 'companion')!
     useGame.setState({ reaction: { key: 1, companionId: c.id, text: '干得漂亮！', expression: 'happy', affinityDelta: 5 } })
     render(<ReactionPopup />)
@@ -65,7 +65,7 @@ describe('reaction popup', () => {
 describe('battle-stage action plan', () => {
   it('plans a skill for the on-field companion, and a completed task executes it', async () => {
     const user = userEvent.setup()
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     render(<MonsterHUD />)
 
     // Defaults now live in a popup; open it, then click 流光击 to ASSIGN it (no instant cast).
@@ -108,7 +108,7 @@ describe('victory settlement window', () => {
 describe('combat log panel', () => {
   it('expands to show the round-by-round interactions', async () => {
     const user = userEvent.setup()
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     await useTodos.getState().add({ title: '打一架', priority: 'high' })
     await useTodos.getState().complete(useTodos.getState().todos[0].id)
 

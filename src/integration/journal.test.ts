@@ -26,7 +26,7 @@ const companionId = () => useGame.getState().characters.find((c) => c.kind === '
 
 describe('journal', () => {
   it('persists the entry, pays party XP, and triggers a mood-keyed companion reaction', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     const xp0 = selectPlayer(useGame.getState())!.stats.xp
 
     await useJournal.getState().add({ date: '2026-05-31', mood: 'great', title: '好日子', body: '今天完成了很多事。' })
@@ -42,7 +42,7 @@ describe('journal', () => {
   })
 
   it('does not re-pay XP on a second entry the same local day, but still saves it', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     await useJournal.getState().add({ date: '2026-05-31', mood: 'good', body: '第一篇' })
     const xpAfterFirst = selectPlayer(useGame.getState())!.stats.xp
 
@@ -52,7 +52,7 @@ describe('journal', () => {
   })
 
   it('ignores a blank entry', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     await useJournal.getState().add({ date: '2026-05-31', mood: 'neutral', body: '   ' })
     expect(useJournal.getState().entries).toHaveLength(0)
   })

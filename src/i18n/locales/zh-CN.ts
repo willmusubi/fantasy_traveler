@@ -2,22 +2,6 @@
 // (class / skill / monster names) are locale-keyed so they localize later.
 
 export const zhCN: Record<string, string> = {
-  // Classes
-  'class.vanguard': '先锋',
-  'class.guardian': '守卫',
-  'class.striker': '影刺',
-  'class.arcanist': '秘术',
-  'class.tactician': '策士',
-  'class.medic': '医者',
-
-  // Class one-line benefits (onboarding)
-  'class.vanguard.blurb': '攻守均衡的全能战士，新手友好',
-  'class.guardian.blurb': '高防高血的前排坦克，守护队友',
-  'class.striker.blurb': '敏捷爆发，单体高伤的刺客',
-  'class.arcanist.blurb': '范围法术输出，群体清场',
-  'class.tactician.blurb': '控制与增益，运筹帷幄',
-  'class.medic.blurb': '治疗与护盾，团队后盾',
-
   // Skills (original sample cast)
   'skill.liuguang': '流光击',
   'skill.xingchen': '星尘斩',
@@ -60,12 +44,49 @@ export const zhCN: Record<string, string> = {
   'equip.star_compass': '观星罗盘',
   'equip.stargazer_seal': '观星徽记',
   'equip.astral_canvas': '星图残卷',
+  'equip.starsight_ring': '星准指环',
+  'equip.comet_charm': '彗心坠饰',
 
-  // Stats
-  'stat.atk': '攻击',
-  'stat.def': '防御',
+  // Stats (§25 ten-stat sheet)
+  'stat.str': '力量',
+  'stat.vit': '耐久',
+  'stat.wis': '智慧',
+  'stat.spr': '精神',
   'stat.spd': '速度',
-  'stat.mag': '法术',
+  'stat.skl': '技巧',
+  'stat.hit': '命中',
+  'stat.eva': '闪避',
   'stat.maxHp': '生命',
   'stat.maxMp': '魔力',
+
+  // Derived combat values (§25)
+  'derived.patk': '物攻',
+  'derived.pdef': '物防',
+  'derived.matk': '魔攻',
+  'derived.mdef': '魔防',
+
+  // Physical damage categories + elements (§25)
+  'phys.slash': '斩',
+  'phys.pierce': '突',
+  'phys.strike': '打',
+  'phys.arcane': '法',
+  'element.metal': '金',
+  'element.wood': '木',
+  'element.water': '水',
+  'element.fire': '火',
+  'element.earth': '土',
+
+  // Weapon kinds (§25)
+  'weapon.sword': '剑',
+  'weapon.katana': '刀',
+  'weapon.axe': '斧',
+  'weapon.spear': '枪',
+  'weapon.halberd': '戟',
+  'weapon.bow': '弓',
+  'weapon.fist': '拳',
+  'weapon.hammer': '锤',
+  'weapon.club': '棍',
+  'weapon.rod': '杖',
+  'weapon.fan': '扇',
+  'weapon.qin': '琴',
 }

@@ -26,11 +26,11 @@ beforeEach(async () => {
 describe('M0 end-to-end loop', () => {
   it('onboard → add high todos → complete → monster damaged, affinity rank-up, XP, reaction', async () => {
     // 1. Onboarding seeds the game (player vanguard + 米拉 + demo affinity 90).
-    await useGame.getState().seedNewGame('测试旅人', 'vanguard')
+    await useGame.getState().seedNewGame('测试旅人')
     const g0 = useGame.getState()
     expect(g0.gameState).toBeTruthy()
-    const startHp = g0.gameState!.enemies[0].maxHp // 900 at stage 0, 0 open-high
-    expect(startHp).toBe(900)
+    const startHp = g0.gameState!.enemies[0].maxHp // elite TTK budget at stage 0, 0 open-high
+    expect(startHp).toBe(373) // enemyHpBudget(0,'elite') §25
     const companionId = g0.characters.find((c) => c.kind === 'companion')!.id
     expect(g0.affinities[companionId].points).toBe(90) // demo seed
 
@@ -68,7 +68,7 @@ describe('M0 end-to-end loop', () => {
   })
 
   it('reloads persisted state from IndexedDB (hydrate)', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'striker')
+    await useGame.getState().seedNewGame('阿旅')
     await useTodos.getState().add({ title: '复盘', priority: 'med' })
 
     // Simulate a fresh page load: close + reopen the connection, re-hydrate.
@@ -84,7 +84,7 @@ describe('M0 end-to-end loop', () => {
   })
 
   it('overdue sweep grows the monster and sets a worried mood (once per day)', async () => {
-    await useGame.getState().seedNewGame('测试', 'vanguard')
+    await useGame.getState().seedNewGame('测试')
     const companionId = useGame.getState().characters.find((c) => c.kind === 'companion')!.id
     const maxHp0 = useGame.getState().gameState!.enemies[0].maxHp
 
@@ -124,7 +124,7 @@ describe('M0 end-to-end loop', () => {
   })
 
   it('completing a story quest recruits a companion + drops loot (full pipeline, offline fallback)', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     // No API key in tests → buildAndGenerateQuest falls back to the authored quest.
     await useQuest.getState().startQuest('stargazers')
     expect(useGame.getState().gameState!.activeQuestId).toBeTruthy()

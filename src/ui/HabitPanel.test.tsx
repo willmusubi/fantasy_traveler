@@ -29,7 +29,7 @@ afterEach(cleanup)
 describe('HabitPanel + BuffChoiceModal', () => {
   it('checking a daily habit offers a buff draft; picking one applies it and closes the modal', async () => {
     const user = userEvent.setup()
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     await useHabits.getState().add({ title: '按时起床', schedule: { kind: 'daily' } })
     render(
       <>

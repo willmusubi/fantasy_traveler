@@ -29,7 +29,7 @@ afterEach(cleanup)
 describe('productivity view', () => {
   it("shows the selected day's todo and journals it with a companion reaction", async () => {
     const user = userEvent.setup()
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     const today = localDateKey(new Date())
     await useTodos.getState().add({ title: '买胶卷', priority: 'high', due: today })
 
@@ -55,7 +55,7 @@ describe('productivity view', () => {
 
   it('quick-adds a todo onto the selected day', async () => {
     const user = userEvent.setup()
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     render(<ProductivityView />)
 
     await user.type(screen.getByPlaceholderText('＋ 新待办（截止这天）'), '冲洗照片')

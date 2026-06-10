@@ -594,10 +594,30 @@ input, select, textarea { font-family: inherit; }
 @keyframes shine { 0% { transform: translateX(-100%); } 55%, 100% { transform: translateX(240%); } }
 .hpbar-label { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; font-family: var(--font-pixel); text-shadow: 1px 1px 0 var(--outline); z-index: 1; }
 .float {
-  position: absolute; left: 50%; top: -8px; transform: translateX(-50%);
+  position: absolute; left: 50%; top: -8px; transform: translateX(-50%); white-space: nowrap;
   font-family: var(--font-pixel); font-size: 26px; color: var(--gold); pointer-events: none; z-index: 3;
   text-shadow: 2px 2px 0 var(--outline); animation: floatUp 1.05s ease-out forwards;
 }
+/* §25 hit feedback: 会心一击 pops bigger+red-hot; 效果拔群 glows. */
+.float.crit { font-size: 32px; color: #ff7a4d; animation: floatUp 1.25s ease-out forwards; }
+.float.weak { color: #ffd84d; text-shadow: 2px 2px 0 var(--outline), 0 0 10px rgba(255, 216, 77, 0.6); }
+
+/* §25 enemy intel (deep mode) + 蓄力 windup warning (both modes). */
+.enemy-windup {
+  position: absolute; top: -4px; right: -4px; z-index: 4; pointer-events: none;
+  font-family: var(--font-pixel); font-size: 11px; color: #ffd84d;
+  background: rgba(64, 18, 18, 0.92); border: 1px solid #ff7a4d; border-radius: 6px;
+  padding: 2px 6px; text-shadow: 1px 1px 0 var(--outline);
+  animation: windupPulse 0.9s ease-in-out infinite alternate;
+}
+@keyframes windupPulse { from { transform: scale(1); } to { transform: scale(1.12); } }
+.enemy-intel { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; margin-top: 3px; }
+.intel-chip {
+  font-size: 10px; line-height: 1; padding: 3px 5px; border-radius: 5px;
+  border: 1px solid var(--frame); background: rgba(10, 14, 40, 0.7); color: var(--ink-dim);
+}
+.intel-chip.weak { border-color: #ffd84d; color: #ffd84d; }
+.intel-chip.resist { border-color: #7f8bd6; color: #9aa4e0; }
 @keyframes floatUp { 0% { opacity: 0; transform: translate(-50%, 10px); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -46px); } }
 
 /* ---------- Companion card ---------- */

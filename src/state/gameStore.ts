@@ -5,7 +5,7 @@ import { SKILL_DEFS } from '../companion/skills'
 import { affinityRepo, charactersRepo, dungeonsRepo, gameStateRepo, questsRepo } from '../data/repositories'
 import { HABIT_BUFF_ACTIVE_CAP, HABIT_BUFF_CHOICES, HABIT_BUFF_POOL, HABIT_DEBUFF_POOL, type HabitBuffDef } from '../domain/config'
 import { localDateKey } from '../domain/dates'
-import type { Affinity, Character, ClassId, DungeonRecord, ExpressionKey, GameState, ID, PartyBuff, Priority, Quest, ScriptChoiceOption, SkillId, Todo, WorldId } from '../domain/types'
+import type { Affinity, Character, DungeonRecord, ExpressionKey, GameState, ID, PartyBuff, Priority, Quest, ScriptChoiceOption, SkillId, Todo, WorldId } from '../domain/types'
 import { materializeQuest } from '../ai/storyline'
 import { spawnMonster, teamFromEncounter } from '../game/combat'
 import { dispatchEvent } from '../game/pipeline'
@@ -58,8 +58,9 @@ interface GameStore {
   affinities: Record<string, Affinity>
   reaction: Reaction | null
   toasts: Toast[]
-  /** Per-enemy floating damage: enemyId → latest {amount,key}. Keyed so each card re-animates. */
-  lastDamageByEnemy: Record<ID, { amount: number; key: number }>
+  /** Per-enemy floating damage: enemyId → latest {amount,key} (+§25 flags: 会心/拔群/不佳/未命中).
+   *  Keyed so each card re-animates. */
+  lastDamageByEnemy: Record<ID, { amount: number; key: number; crit?: boolean; weak?: boolean; resist?: boolean; missed?: boolean }>
   /** Transient (NOT persisted) target the player picked for the current step-through turn. The
    *  step-through picker + enemy cards read/write it; passed to advanceRound for single-target acts. */
   combatTargetId: ID | null
@@ -76,7 +77,7 @@ interface GameStore {
   scriptCompletion: { scriptId: string; flags: Record<string, string | boolean> } | null
 
   hydrate: () => Promise<void>
-  seedNewGame: (name: string, classId: ClassId) => Promise<void>
+  seedNewGame: (name: string) => Promise<void>
   ingestResult: (result: ReducerResult) => { affinityDelta: number }
   showReaction: (r: Omit<Reaction, 'key'>) => void
   clearReaction: () => void
@@ -208,10 +209,10 @@ export const useGame = create<GameStore>((set, get) => ({
     set({ characters, gameState: gameState ?? null, affinities, activeQuest: activeQuest ?? null, ready: true })
   },
 
-  async seedNewGame(name, classId) {
+  async seedNewGame(name) {
     const now = new Date()
     const today = localDateKey(now)
-    const player = createPlayer(name, classId, now, () => crypto.randomUUID())
+    const player = createPlayer(name, now, () => crypto.randomUUID())
     const companion = createCompanionCharacter(PRIMARY_COMPANION_ID, now)
 
     // Demo seed: primary companion starts near the B threshold so a couple of
@@ -277,6 +278,7 @@ export const useGame = create<GameStore>((set, get) => ({
     const toasts: Toast[] = []
     let affinityDelta = 0
     const dmgByEnemy: Record<string, number> = {}
+    const dmgMeta: Record<string, { crit?: boolean; weak?: boolean; resist?: boolean; missed?: boolean }> = {}
     let recruitedId: string | null = null
     // Settlement accumulators.
     let victoryXp = 0
@@ -293,6 +295,15 @@ export const useGame = create<GameStore>((set, get) => ({
     for (const e of result.effects) {
       if (e.type === 'damage') {
         dmgByEnemy[e.targetId] = (dmgByEnemy[e.targetId] ?? 0) + e.amount
+        // §25 float flags (per-enemy, per-round): any crit/weak hit wins; missed only counts
+        // when nothing landed on that enemy this round.
+        const meta = (dmgMeta[e.targetId] ??= {})
+        if (e.crit) meta.crit = true
+        if (e.typeMult !== undefined && e.typeMult > 1) meta.weak = true
+        if (e.typeMult !== undefined && e.typeMult < 1) meta.resist = true
+        if (e.missed) meta.missed = true
+      } else if (e.type === 'enemyTelegraph') {
+        toasts.push({ id: tid(), kind: 'warn', text: `⚡ 敌人正在${e.text}——下一击非同小可！` })
       } else if (e.type === 'affinity') {
         affinityDelta += e.amount
         if (e.rankedUpTo) {
@@ -379,7 +390,13 @@ export const useGame = create<GameStore>((set, get) => ({
       scriptCompletion: scriptDone ?? prev.scriptCompletion,
       toasts: [...prev.toasts, ...toasts],
       lastDamageByEnemy: Object.keys(dmgByEnemy).length
-        ? { ...prev.lastDamageByEnemy, ...Object.fromEntries(Object.entries(dmgByEnemy).map(([id, a]) => [id, { amount: a, key: ++reactionKey }])) }
+        ? {
+            ...prev.lastDamageByEnemy,
+            ...Object.fromEntries(Object.entries(dmgByEnemy).map(([id, a]) => {
+              const m = dmgMeta[id] ?? {}
+              return [id, { amount: a, key: ++reactionKey, crit: m.crit, weak: m.weak, resist: m.resist, missed: a === 0 && m.missed ? true : undefined }]
+            })),
+          }
         : prev.lastDamageByEnemy,
     })
     return { affinityDelta }

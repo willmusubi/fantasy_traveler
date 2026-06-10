@@ -1,7 +1,7 @@
-// Tunable game-balance constants. All in ONE place (§7, §21) so the economy is
+// Tunable game-balance constants. All in ONE place (§7, §21, §25) so the economy is
 // easy to retune and unit tests reference the same source of truth.
 
-import type { ClassId, PartyBuff, Priority, Stats } from './types'
+import type { ClassId, Element, EnemyArchetype, EnemyMove, PartyBuff, PhysKind, Priority, StatProfile, WeaponKind } from './types'
 
 // ---------- XP / leveling ----------
 
@@ -9,6 +9,10 @@ import type { ClassId, PartyBuff, Priority, Stats } from './types'
 export function xpForLevel(n: number): number {
   return 80 * n + 20 * n * n
 }
+
+/** §25 hard level cap — keeps linear growth bounded so multiplier stacks can't run away.
+ *  Enemy stage curves clamp to the same horizon. */
+export const MAX_LEVEL = 60
 
 // ---------- Combat ----------
 
@@ -29,14 +33,69 @@ export const TODO_XP: Record<Priority, number> = {
  *  pays; later same-day entries are free to write (no farming). */
 export const JOURNAL_XP = 10
 
-// Tuned so a base fight is ~10-15 high-priority task completions (party ≈67 dmg/high task vs
-// def 14) and the enemy's now-per-round turn-attack (below) actually threatens a wipe. All dials.
-export const MONSTER_BASE_HP = 900
-export const HP_PER_OPEN_HIGH = 110
-export const HP_PER_STAGE = 180
-export const MONSTER_BASE_DEF = 14
-export const MONSTER_DEF_PER_STAGE = 3
-export const MONSTER_BASE_ATK = 20
+// ---------- §25 enemy curves (TTK-budget derived — NOT free constants) ----------
+// Design rule: defense/hit/eva are TEXTURE dials (linear, modest); HP is the DIFFICULTY
+// knob, derived as TTK_target × expected party damage-per-round. The simulator
+// (scripts/sim-balance.ts + sim.guard.test.ts) is the verification gate: retune by
+// editing these curves and re-running — formulas stay put.
+
+export const ENEMY_PDEF = (stage: number) => Math.round(10 + 2.5 * clampStage(stage))
+export const ENEMY_MDEF = (stage: number) => Math.round(ENEMY_PDEF(stage) * 0.8)
+export const ENEMY_HIT = (stage: number) => 8 + clampStage(stage)
+export const ENEMY_EVA = (stage: number) => Math.round(6 + 0.6 * clampStage(stage))
+export const ENEMY_ATK = (stage: number) => 16 + 2 * clampStage(stage)
+export const ENEMY_MATK = (stage: number) => Math.round(ENEMY_ATK(stage) * 0.9)
+
+/** Stages share the level horizon (MAX_LEVEL) so enemy curves are bounded too. */
+export function clampStage(stage: number): number {
+  return Math.min(Math.max(0, stage), 59)
+}
+
+/** Rounds-of-real-tasks each archetype should take for an at-level neutral party. */
+export const TTK_TARGET: Record<EnemyArchetype, number> = { mook: 4, elite: 6, boss: 10 }
+
+/** Real play beats basic-only play via skills + CTB laps — folded into the HP budget. */
+export const ENGAGEMENT_FACTOR = 1.25
+/** The "neutral" anchor: a player completing ordinary (med) tasks, no weakness play. */
+export const NEUTRAL_PRIORITY_MULT = 1.5
+
+/** Extra HP per open high-priority todo at spawn (backlog pressure). */
+export const HP_PER_OPEN_HIGH = 70
+
+/** Expected at-stage party damage per round: traveler + an attacker companion +
+ *  half-time support, modest shop weapons, med-priority tasks, soak + chip floor. */
+export function expectedPartyDPR(stage: number): number {
+  const s = clampStage(stage)
+  const L = Math.min(s + 1, MAX_LEVEL)
+  const patk = (p: StatProfile, weapon: number) => p.base.str + p.growth.str * (L - 1) + weapon
+  const pdef = ENEMY_PDEF(s)
+  const hitOf = (pow: number) =>
+    Math.max(pow * NEUTRAL_PRIORITY_MULT * 0.1, pow * NEUTRAL_PRIORITY_MULT - pdef * 0.5)
+  const traveler = hitOf(patk(PROFILE_TEMPLATES.balanced, 2))
+  const attacker = hitOf(patk(PROFILE_TEMPLATES.attacker, 3))
+  const support = hitOf(patk(PROFILE_TEMPLATES.support, 1)) * 0.5
+  return (traveler + attacker + support) * ENGAGEMENT_FACTOR
+}
+
+/** The §25 HP budget: how much HP gives the target TTK at this stage. */
+export function enemyHpBudget(stage: number, archetype: EnemyArchetype): number {
+  return Math.round(TTK_TARGET[archetype] * expectedPartyDPR(stage))
+}
+
+/** Fixed move rotations (no MP — §25). Boss heavy is telegraphed the round before;
+ *  its damage is additionally capped at BOSS_HEAVY_POOL_CAP × current party HP pool
+ *  and the rotation resets off the heavy slot on a wipe (death-spiral guards). */
+export const ARCHETYPE_PATTERNS: Record<EnemyArchetype, EnemyMove[]> = {
+  mook: [{ kind: 'attack' }],
+  elite: [{ kind: 'attack' }, { kind: 'attack' }, { kind: 'heavy', mult: 1.4 }],
+  boss: [
+    { kind: 'attack' },
+    { kind: 'heavy', mult: 1.4 },
+    { kind: 'attack' },
+    { kind: 'heavy', mult: 2.0, telegraph: '蓄力' },
+  ],
+}
+export const BOSS_HEAVY_POOL_CAP = 0.6
 
 /** On overdue the 心魔 feeds on procrastination — it grows AND hits the party. sweepOverdue fires
  *  ONE TodoOverdue per overdue todo, so these already scale with backlog size (no extra multiplier
@@ -78,7 +137,7 @@ export const WIPE_MONSTER_HEAL_PCT = 0.3
 /** Skill effect scaling. attack dmg = round(atk * power * ATK_MULT) − monsterDef;
  *  heal = round(mag * power * HEAL_MULT); buff lasts BUFF_TURNS completions. */
 export const SKILL_ATK_MULT = 3
-export const SKILL_HEAL_MULT = 2.2
+export const SKILL_HEAL_MULT = 2.5 // §25: up from 2.2 vs the larger HP pools/heavier hits
 export const SKILL_BUFF_TURNS = 3
 
 // ---------- Speed: persistent charge-time battle (CTB) ----------
@@ -152,59 +211,127 @@ export const AFFINITY_THRESHOLDS = {
   S: 500,
 } as const
 
-// ---------- Class definitions (L1 base + per-level growth) ----------
+// ---------- §25 weapons & elements (static data) ----------
 
-export interface ClassDef {
-  id: ClassId
-  nameKey: string
-  role: string
-  base: Omit<Stats, 'level' | 'xp'>
-  growth: Omit<Stats, 'level' | 'xp'>
+/** Weapon kind → physical damage category. Arcane weapons swing with matk. */
+export const WEAPON_CATEGORY: Record<WeaponKind, PhysKind> = {
+  sword: 'slash', katana: 'slash', axe: 'slash',
+  spear: 'pierce', halberd: 'pierce', bow: 'pierce',
+  fist: 'strike', hammer: 'strike', club: 'strike',
+  rod: 'arcane', fan: 'arcane', qin: 'arcane',
 }
 
-export const CLASS_DEFS: Record<ClassId, ClassDef> = {
-  vanguard: {
-    id: 'vanguard',
-    nameKey: 'class.vanguard',
-    role: '平衡战士',
-    base: { maxHp: 120, maxMp: 24, atk: 18, def: 12, spd: 10, mag: 6 },
-    growth: { maxHp: 14, maxMp: 3, atk: 3, def: 2, spd: 1, mag: 1 },
+/** 五行相克: attacker BEATS defender → ×ELEM_ADV; defender beats attacker → ×ELEM_DISADV.
+ *  木克土, 土克水, 水克火, 火克金, 金克木. */
+export const ELEMENT_BEATS: Record<Element, Element> = {
+  wood: 'earth', earth: 'water', water: 'fire', fire: 'metal', metal: 'wood',
+}
+
+// ---------- §25 damage pipeline constants ----------
+
+/** hitRate% = clamp(HIT_BASE + (hit − eva) × HIT_SLOPE, HIT_FLOOR, 100). */
+export const HIT_BASE = 88
+export const HIT_SLOPE = 1.2
+export const HIT_FLOOR = 55
+/** critRate% = min(CRIT_CAP, CRIT_BASE + skl × CRIT_PER_SKL). Player side ONLY —
+ *  enemies never crit (bosses use telegraphed heavy moves instead). */
+export const CRIT_BASE = 5
+export const CRIT_PER_SKL = 0.3
+export const CRIT_CAP = 45
+export const CRIT_MULT = 1.6
+/** Universal defense soak (was 1.0 for party hits / 0.5 for enemy hits — now uniform). */
+export const DEF_SOAK = 0.5
+/** Chip floor: damage never drops below this fraction of the pre-mitigation raw. */
+export const CHIP_FLOOR_PCT = 0.1
+/** Weakness / resist multipliers (phys kind tags incl. arcane 弱魔). */
+export const PHYS_WEAK_MULT = 1.5
+export const PHYS_RESIST_MULT = 0.7
+/** 五行 advantage multipliers. */
+export const ELEM_ADV_MULT = 1.3
+export const ELEM_DISADV_MULT = 0.8
+/** Combined phys×elem multiplier clamp. Crit + variance apply OUTSIDE this clamp. */
+export const TYPE_MULT_MIN = 0.5
+export const TYPE_MULT_MAX = 2.0
+/** Damage variance: uniform in [1−V, 1+V]. */
+export const DMG_VARIANCE = 0.08
+
+// ---------- §25 stat profiles (REPLACES the class system) ----------
+// Stats express character identity directly. Templates are authoring shorthands only —
+// "职业" no longer exists as a player-facing or mechanical concept.
+
+const block = (
+  maxHp: number, maxMp: number, str: number, vit: number, wis: number, spr: number,
+  spd: number, skl: number, hit: number, eva: number,
+) => ({ maxHp, maxMp, str, vit, wis, spr, spd, skl, hit, eva })
+
+export type ProfileTemplateId = 'attacker' | 'tank' | 'caster' | 'trickster' | 'support' | 'balanced'
+
+export const PROFILE_TEMPLATES: Record<ProfileTemplateId, StatProfile> = {
+  /** 敏捷攻手 — high str/skl/spd, frail. */
+  attacker: {
+    role: '敏捷攻手',
+    base: block(95, 24, 18, 8, 6, 7, 15, 14, 14, 10),
+    growth: block(10, 3, 3, 1, 1, 1, 2, 3, 1, 2),
+    weaponKinds: ['katana', 'fist', 'bow'],
   },
-  guardian: {
-    id: 'guardian',
-    nameKey: 'class.guardian',
-    role: '重装',
-    base: { maxHp: 150, maxMp: 20, atk: 12, def: 18, spd: 7, mag: 5 },
-    growth: { maxHp: 18, maxMp: 2, atk: 2, def: 3, spd: 1, mag: 1 },
+  /** 重装壁垒 — top HP/vit, slow. */
+  tank: {
+    role: '重装壁垒',
+    base: block(150, 20, 12, 17, 5, 13, 7, 6, 11, 5),
+    growth: block(17, 2, 2, 3, 1, 2, 1, 1, 1, 1),
+    weaponKinds: ['axe', 'hammer', 'club'],
   },
-  striker: {
-    id: 'striker',
-    nameKey: 'class.striker',
-    role: '敏捷暴击',
-    base: { maxHp: 95, maxMp: 24, atk: 20, def: 8, spd: 16, mag: 6 },
-    growth: { maxHp: 10, maxMp: 3, atk: 3, def: 1, spd: 2, mag: 1 },
+  /** 法术爆发 — top wis/MP, frail. */
+  caster: {
+    role: '法术爆发',
+    base: block(85, 70, 6, 7, 18, 10, 11, 8, 12, 8),
+    growth: block(9, 8, 1, 1, 3, 2, 1, 1, 1, 1),
+    weaponKinds: ['rod', 'qin'],
   },
-  arcanist: {
-    id: 'arcanist',
-    nameKey: 'class.arcanist',
-    role: '法术范围',
-    base: { maxHp: 85, maxMp: 70, atk: 7, def: 7, spd: 11, mag: 20 },
-    growth: { maxHp: 9, maxMp: 9, atk: 1, def: 1, spd: 1, mag: 3 },
+  /** 策士攻辅 — hybrid wis/spd control. */
+  trickster: {
+    role: '策士攻辅',
+    base: block(90, 56, 9, 9, 15, 11, 14, 10, 13, 9),
+    growth: block(10, 6, 1, 1, 2, 2, 2, 2, 1, 1),
+    weaponKinds: ['fan', 'bow', 'qin'],
   },
-  tactician: {
-    id: 'tactician',
-    nameKey: 'class.tactician',
-    role: '控制/攻辅',
-    base: { maxHp: 90, maxMp: 56, atk: 10, def: 9, spd: 14, mag: 16 },
-    growth: { maxHp: 10, maxMp: 6, atk: 2, def: 1, spd: 2, mag: 2 },
+  /** 治疗支援 — top spr, sturdy caster. */
+  support: {
+    role: '治疗支援',
+    base: block(100, 60, 8, 11, 15, 14, 10, 7, 12, 7),
+    growth: block(11, 7, 1, 2, 2, 3, 1, 1, 1, 1),
+    weaponKinds: ['rod', 'fan', 'club'],
   },
-  medic: {
-    id: 'medic',
-    nameKey: 'class.medic',
-    role: '治疗/辅助',
-    base: { maxHp: 100, maxMp: 60, atk: 8, def: 12, spd: 10, mag: 17 },
-    growth: { maxHp: 12, maxMp: 7, atk: 1, def: 2, spd: 1, mag: 2 },
+  /** 全能 — the traveler's even spread. */
+  balanced: {
+    role: '全能旅人',
+    base: block(120, 30, 14, 11, 10, 10, 11, 10, 12, 8),
+    growth: block(13, 4, 2, 2, 2, 2, 1, 2, 1, 1),
+    weaponKinds: 'all',
   },
+}
+
+/** The player's profile — cross-world traveler: balanced spread, every weapon, NO element. */
+export const TRAVELER_PROFILE: StatProfile = PROFILE_TEMPLATES.balanced
+
+/** Shipped companion profiles (观星会). Identity = stats + element + weapons.
+ *  Content packs may author `CompanionDef.profile` directly; absent that, legacy
+ *  `classId` falls through CLASS_TEMPLATE_MAP below. */
+export const COMPANION_PROFILES: Record<string, StatProfile> = {
+  mira: { ...PROFILE_TEMPLATES.attacker, element: 'fire' },
+  vela: { ...PROFILE_TEMPLATES.trickster, element: 'water' },
+  nova: { ...PROFILE_TEMPLATES.support, element: 'wood' },
+}
+
+/** Legacy classId → template, for old Character records and packs that still author
+ *  classId (e.g. the gitignored local pack). Keeps them compiling AND playing sensibly. */
+export const CLASS_TEMPLATE_MAP: Record<ClassId, ProfileTemplateId> = {
+  vanguard: 'balanced',
+  guardian: 'tank',
+  striker: 'attacker',
+  arcanist: 'caster',
+  tactician: 'trickster',
+  medic: 'support',
 }
 
 /** AI chat defaults. */

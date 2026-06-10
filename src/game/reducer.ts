@@ -12,6 +12,7 @@ import { unlockedSkills, type SkillDef } from '../companion/skills'
 import {
   AFFINITY_JOURNAL_TOTAL,
   AFFINITY_TODO_COMPLETE,
+  BOSS_HEAVY_POOL_CAP,
   ENEMY_ATK_MULT,
   ENEMY_DEF_SOAK,
   GOLD_QUEST_CLEAR,
@@ -29,15 +30,19 @@ import {
   VICTORY_AFFINITY,
   VICTORY_HP_RESTORE_PCT,
   VICTORY_MP_RESTORE_PCT,
+  WEAPON_CATEGORY,
   WIPE_MONSTER_HEAL_PCT,
   WIPE_REVIVE_HP_PCT,
 } from '../domain/config'
 import { localDateKey } from '../domain/dates'
-import type { ActiveRound, Affinity, CharResource, Character, GameEffect, GameState, ID, Mood, MoodFlag, Monster, OwnedEquipment, PartyBuff, Priority, Quest, QuestReward, ScriptChapter, ScriptDef, SkillId, Stats, TurnActor } from '../domain/types'
+import type { ActiveRound, Affinity, CharResource, Character, Element, GameEffect, GameState, ID, Mood, MoodFlag, Monster, OwnedEquipment, PartyBuff, PhysKind, Priority, Quest, QuestReward, ScriptChapter, ScriptDef, SkillId, Stats, TurnActor, WeaponKind } from '../domain/types'
 import type { SynergyDef } from '../world/relationships'
+import { EQUIPMENT_DEFS } from '../world/equipment'
 import { autoTargetEnemy, ctbRound, defeatRewards, livingEnemies, primaryEnemy, spawnMonster, teamCleared, teamFromEncounter, type CtbUnit } from './combat'
+import { rollDamage } from './damage'
 import { effectiveStats, type CombatContext } from './effectiveStats'
 import type { DomainEvent } from './events'
+import { profileFor } from '../companion/roster'
 import { applyXp } from './leveling'
 
 export interface ReducerInput {
@@ -55,6 +60,30 @@ export interface ReducerInput {
   quest?: Quest
   /** The active branching script (§23), if any (resolved upstream from content; reducer only reads it). */
   script?: ScriptDef
+  /** §25 injected RNG in [0,1) — like newId, keeps the reducer pure. Consumed ONLY at
+   *  turn-resolve time (never in buildRoundCtx, so sync/step paths stay byte-identical).
+   *  Default = 0.5 → "neutral" determinism: always hits, never crits, exact mid variance —
+   *  legacy callers and tests get formula-exact numbers. The pipeline passes Math.random. */
+  roll?: () => number
+}
+
+function rollOf(input: ReducerInput): () => number {
+  return input.roll ?? (() => 0.5)
+}
+
+/** The attack identity of a member's basic swing: equipped weapon's kind/element, falling
+ *  back to the profile's first weapon (traveler 'all' → sword) and innate element. */
+function attackKindOf(member: Character, ctx: CombatContext): { kind: PhysKind; element?: Element } {
+  const oe = ctx.ownedEquipment.find(
+    (e) => e.equippedBy === member.id && EQUIPMENT_DEFS[e.defId]?.slot === 'weapon',
+  )
+  const weapon = oe ? EQUIPMENT_DEFS[oe.defId] : undefined
+  const profile = profileFor(member)
+  const fallback: WeaponKind = profile.weaponKinds === 'all' ? 'sword' : (profile.weaponKinds[0] ?? 'sword')
+  return {
+    kind: WEAPON_CATEGORY[weapon?.weaponKind ?? fallback],
+    element: weapon?.element ?? profile.element,
+  }
 }
 
 function combatCtx(input: ReducerInput): CombatContext {
@@ -127,7 +156,7 @@ function setR(t: Turn, c: Character, r: CharResource): void {
 function grantXp(t: Turn, amount: number): void {
   if (amount <= 0) return
   for (const c of t.combatants) {
-    const r = applyXp(sOf(t, c), c.classId, amount)
+    const r = applyXp(sOf(t, c), profileFor(c), amount)
     t.stats[c.id] = r.stats
     t.effects.push({ type: 'charXp', characterId: c.id, amount, levelsGained: r.levelsGained })
   }
@@ -176,14 +205,14 @@ function decayBuffs(t: Turn): void {
     .filter((b) => b.untilVictory || (b.turnsLeft ?? 0) > 0)
 }
 
-/** Apply HP damage to the on-field character best able to soak it (highest current HP). The
- *  combat `ctx` is passed in (not recomputed) so a round's enemy turns use the round-start buffs —
- *  keeping the interactive step-through byte-identical to the synchronous path. */
+/** Apply FLAT HP damage to the on-field character best able to soak it (highest current
+ *  HP). Used for penalty hits (overdue feeds, timer expiry) — deterministic, always lands
+ *  (a punishment that whiffs teaches nothing). Enemy TURN attacks go through enemyStrike. */
 function dealToParty(t: Turn, rawAmount: number, ctx: CombatContext): void {
   const alive = t.combatants.filter((c) => rOf(t, c).hp > 0)
   if (alive.length === 0) return
   const target = alive.reduce((a, b) => (rOf(t, a).hp >= rOf(t, b).hp ? a : b))
-  const def = effectiveStats(target, ctx).def
+  const def = effectiveStats(target, ctx).vit
   const dmg = Math.max(1, Math.round(rawAmount - def * ENEMY_DEF_SOAK))
   const r = rOf(t, target)
   const hpAfter = Math.max(0, r.hp - dmg)
@@ -192,12 +221,59 @@ function dealToParty(t: Turn, rawAmount: number, ctx: CombatContext): void {
   if (hpAfter <= 0) t.effects.push({ type: 'downed', characterId: target.id })
 }
 
-/** Setback when every on-field member is downed: revive low, the primary enemy recovers some HP. */
+/** §25 enemy TURN attack: the next move of the enemy's rotation (no MP), resolved through
+ *  the unified pipeline (can miss vs the target's eva; never crits). Strikes the sturdiest
+ *  member. Caster-type enemies (matk > atk) swing magic vs spr. Boss heavies ≥2× are
+ *  capped at BOSS_HEAVY_POOL_CAP of the party's CURRENT pool, and a telegraphed next-move
+ *  pushes an enemyTelegraph effect (the HUD warning). Advances patternIdx. */
+function enemyStrike(t: Turn, attacker: Monster, ctx: CombatContext): void {
+  const alive = t.combatants.filter((c) => rOf(t, c).hp > 0)
+  if (alive.length === 0) return
+  const target = alive.reduce((a, b) => (rOf(t, a).hp >= rOf(t, b).hp ? a : b))
+  const eff = effectiveStats(target, ctx)
+  const moves = attacker.pattern && attacker.pattern.length > 0 ? attacker.pattern : [{ kind: 'attack' as const }]
+  const idx = (attacker.patternIdx ?? 0) % moves.length
+  const move = moves[idx]
+  const mult = move.mult ?? 1
+  const magic = (attacker.matk ?? 0) > attacker.atk
+  const out = rollDamage({
+    pow: magic ? (attacker.matk ?? attacker.atk) : attacker.atk,
+    power: ENEMY_ATK_MULT * mult,
+    def: magic ? eff.spr : eff.vit,
+    attackerHit: attacker.hit ?? 8 + Math.max(0, attacker.level - 1),
+    targetEva: eff.eva,
+    roll: rollOf(t.input), // no attackerSkl → enemies never crit (§25)
+  })
+  let dmg = out.dmg
+  if (!out.missed && attacker.archetype === 'boss' && move.kind === 'heavy' && mult >= 2) {
+    const pool = alive.reduce((s, c) => s + rOf(t, c).hp, 0)
+    dmg = Math.min(dmg, Math.round(pool * BOSS_HEAVY_POOL_CAP)) // §25 death-spiral guard 1
+  }
+  if (out.missed) {
+    t.effects.push({ type: 'enemyAttack', targetId: target.id, amount: 0, missed: true })
+  } else {
+    const r = rOf(t, target)
+    const hpAfter = Math.max(0, r.hp - dmg)
+    setR(t, target, { ...r, hp: hpAfter })
+    t.effects.push({ type: 'enemyAttack', targetId: target.id, amount: dmg, heavy: move.kind === 'heavy' || undefined })
+    if (hpAfter <= 0) t.effects.push({ type: 'downed', characterId: target.id })
+  }
+  // Advance the rotation; warn if the NEXT move is a telegraphed wind-up.
+  const nextIdx = (idx + 1) % moves.length
+  t.gs.enemies = t.gs.enemies.map((m) => (m.id === attacker.id ? { ...m, patternIdx: nextIdx } : m))
+  const nextMove = moves[nextIdx]
+  if (nextMove.telegraph) t.effects.push({ type: 'enemyTelegraph', enemyId: attacker.id, text: nextMove.telegraph })
+}
+
+/** Setback when every on-field member is downed: revive low, the primary enemy recovers some HP.
+ *  §25 death-spiral guard 2: every enemy's rotation resets off its heavy slot (patternIdx 0),
+ *  so a freshly-revived party never eats a wind-up it couldn't see. */
 function wipeCheck(t: Turn): void {
   if (t.combatants.some((c) => rOf(t, c).hp > 0)) return
   for (const c of t.combatants) {
     setR(t, c, { hp: sOf(t, c).maxHp * WIPE_REVIVE_HP_PCT, mp: rOf(t, c).mp })
   }
+  t.gs.enemies = t.gs.enemies.map((m) => ((m.patternIdx ?? 0) !== 0 ? { ...m, patternIdx: 0 } : m))
   const idx = t.gs.enemies.findIndex((m) => m.hp > 0)
   if (idx < 0) {
     t.effects.push({ type: 'partyWiped' }) // no living enemy to heal — just revive
@@ -246,7 +322,10 @@ function resolveTarget(t: Turn, targetId?: ID): Monster | undefined {
  *  the LAST living enemy, run the encounter-clear cascade. Returns true on a fresh team-clear.
  *  Shared by todo-completion basic attacks and skill kills. An already-dead enemy is a no-op (an
  *  AoE pass may still name it). */
-function damageEnemy(t: Turn, enemyId: ID, dmg: number, actorId: ID, fromSkill = false): boolean {
+function damageEnemy(
+  t: Turn, enemyId: ID, dmg: number, actorId: ID, fromSkill = false,
+  flags?: { crit?: boolean; typeMult?: number },
+): boolean {
   const idx = t.gs.enemies.findIndex((m) => m.id === enemyId)
   if (idx < 0) return false
   const m = t.gs.enemies[idx]
@@ -255,7 +334,11 @@ function damageEnemy(t: Turn, enemyId: ID, dmg: number, actorId: ID, fromSkill =
   const next = [...t.gs.enemies]
   next[idx] = { ...m, hp: hpAfter }
   t.gs.enemies = next
-  t.effects.push({ type: 'damage', amount: dmg, monsterHpAfter: hpAfter, actorId, targetId: enemyId, fromSkill })
+  t.effects.push({
+    type: 'damage', amount: dmg, monsterHpAfter: hpAfter, actorId, targetId: enemyId, fromSkill,
+    crit: flags?.crit || undefined,
+    typeMult: flags?.typeMult !== undefined && flags.typeMult !== 1 ? flags.typeMult : undefined,
+  })
   if (!teamCleared(t.gs.enemies)) return false
   return resolveEncounterClear(t)
 }
@@ -453,35 +536,61 @@ function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: Comb
   const casterId = caster.id
   const eff = effectiveStats(caster, ctx)
   if (skill.kind === 'attack') {
-    // Physical skills scale off atk; magic skills (scaling: 'mag') off the caster's magic.
-    const scaleStat = skill.scaling === 'mag' ? eff.mag : eff.atk
-    const power = scaleStat * skill.power * SKILL_ATK_MULT
+    // §25: skills resolve through the unified pipeline. Physical skills scale off str/物攻
+    // and inherit the weapon's category; magic skills (scaling: 'mag') scale off wis/魔攻 as
+    // arcane vs mdef. Optional skill.physKind/element override the identity.
+    // (The serialized literals 'atk'|'mag' predate the §25 rename and are kept for packs.)
+    const magicSkill = skill.scaling === 'mag'
+    const wk = attackKindOf(caster, ctx)
+    const strikeArgs = (target: Monster) => ({
+      pow: magicSkill ? eff.wis : eff.str,
+      power: skill.power * SKILL_ATK_MULT,
+      def: magicSkill ? (target.mdef ?? Math.round(target.def * 0.8)) : target.def,
+      attackerHit: eff.hit,
+      targetEva: target.eva ?? 6,
+      attackerSkl: eff.skl,
+      physKind: skill.physKind ?? (magicSkill ? ('arcane' as const) : wk.kind),
+      attackerElement: skill.element ?? wk.element,
+      targetElement: target.element,
+      targetWeak: target.physWeak,
+      targetResist: target.physResist,
+      roll: rollOf(t.input),
+    })
     if (skill.target === 'allEnemies') {
-      // AoE: hit every CURRENTLY-living enemy. Snapshot ids first (a clear respawns the array) and
-      // stop once a hit clears the team, so we never strike the freshly-spawned next team.
+      // AoE: hit every CURRENTLY-living enemy (each rolls its own hit/crit/weakness). Snapshot
+      // ids first (a clear respawns the array) and stop once a hit clears the team, so we never
+      // strike the freshly-spawned next team. The skillCast headline = the first target's roll.
       const ids = livingEnemies(t.gs.enemies).map((m) => m.id)
-      const firstDef = t.gs.enemies.find((m) => m.id === ids[0])?.def ?? 0
-      t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'attack', amount: Math.max(1, Math.round(power - firstDef)) })
       let cleared = false
+      let headlined = false
       for (const id of ids) {
         if (cleared) break
         const e = t.gs.enemies.find((m) => m.id === id)
         if (!e || e.hp <= 0) continue
-        const dmg = Math.max(1, Math.round(power - e.def))
-        cleared = damageEnemy(t, id, dmg, casterId, true) || cleared
+        const out = rollDamage(strikeArgs(e))
+        if (!headlined) {
+          t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'attack', amount: out.dmg, missed: out.missed || undefined, crit: out.crit || undefined })
+          headlined = true
+        }
+        if (out.missed) continue
+        cleared = damageEnemy(t, id, out.dmg, casterId, true, { crit: out.crit, typeMult: out.typeMult }) || cleared
       }
       return cleared
     }
     // single-target attack: the chosen enemy, else the auto-target.
     const target = resolveTarget(t, targetId)
     if (!target) return false
-    const dmg = Math.max(1, Math.round(power - target.def))
-    const monsterHpAfter = Math.max(0, target.hp - dmg) // shown in the log so it reconciles with the bar
-    t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'attack', amount: dmg, monsterHpAfter, targetId: target.id })
-    return damageEnemy(t, target.id, dmg, casterId, true)
+    const out = rollDamage(strikeArgs(target))
+    if (out.missed) {
+      t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'attack', amount: 0, missed: true, targetId: target.id })
+      return false
+    }
+    const monsterHpAfter = Math.max(0, target.hp - out.dmg) // shown in the log so it reconciles with the bar
+    t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'attack', amount: out.dmg, monsterHpAfter, targetId: target.id, crit: out.crit || undefined, typeMult: out.typeMult !== 1 ? out.typeMult : undefined })
+    return damageEnemy(t, target.id, out.dmg, casterId, true, { crit: out.crit, typeMult: out.typeMult })
   }
   if (skill.kind === 'heal') {
-    const heal = Math.round(eff.mag * skill.power * SKILL_HEAL_MULT)
+    const heal = Math.round(eff.wis * skill.power * SKILL_HEAL_MULT)
     t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'heal', amount: heal })
     if (skill.target === 'allAllies') {
       for (const c of t.combatants) healChar(t, c, heal)
@@ -567,10 +676,10 @@ function resolveTurnInto(
   const act = rctx.order[index]
   if (act.side !== 'party') {
     // The acting enemy's turn — look it up by id. A lap turn of an enemy that died earlier this
-    // round is skipped. It strikes the sturdiest member.
+    // round is skipped. §25: it executes the next move of its rotation (can miss, may telegraph).
     const attacker = t.gs.enemies.find((m) => m.id === act.id)
     if (!attacker || attacker.hp <= 0) return false
-    dealToParty(t, attacker.atk * ENEMY_ATK_MULT, ctx)
+    enemyStrike(t, attacker, ctx)
     return false
   }
   const member = t.combatants.find((c) => c.id === act.id)
@@ -583,14 +692,35 @@ function resolveTurnInto(
   if (skill && r.mp >= skill.mpCost && r.hp > (skill.hpCost ?? 0)) {
     return applySkillEffect(t, member, skill, ctx, targetId) // planned skill fires (spends MP/HP)
   }
-  // Basic attack scales off the member's BEST offensive stat: casters (high mag, low atk) swing with
-  // magic so they aren't floored to 1 by the enemy's defense; physical units still use atk (atk≥mag).
+  // §25 basic attack through the unified pipeline. Identity: an arcane weapon (杖扇琴) swings
+  // magic; otherwise the member's BEST offensive stat (casters with high wis swing magic so
+  // they aren't floored by physical defense). Magic targets mdef, physical targets def.
   // It hits the chosen target (manual step-through), else the auto-target (lowest-HP living enemy).
   const target = resolveTarget(t, targetId)
   if (!target) return false // no living enemy (e.g. a lap after the team already cleared)
   const eff = effectiveStats(member, ctx)
-  const dmg = Math.max(1, Math.round(Math.max(eff.atk, eff.mag) * rctx.mult - target.def))
-  return damageEnemy(t, target.id, dmg, member.id) // basic attack (priority-scaled)
+  const wk = attackKindOf(member, ctx)
+  const magic = wk.kind === 'arcane' || eff.wis > eff.str
+  const out = rollDamage({
+    pow: magic ? eff.wis : eff.str,
+    power: rctx.mult,
+    def: magic ? (target.mdef ?? Math.round(target.def * 0.8)) : target.def,
+    attackerHit: eff.hit,
+    targetEva: target.eva ?? 6,
+    attackerSkl: eff.skl,
+    physKind: magic ? 'arcane' : wk.kind,
+    attackerElement: wk.element,
+    targetElement: target.element,
+    targetWeak: target.physWeak,
+    targetResist: target.physResist,
+    roll: rollOf(t.input),
+  })
+  if (out.missed) {
+    // 真实Miss — per-MEMBER, so a completed task practically never zeroes out (§25).
+    t.effects.push({ type: 'damage', amount: 0, monsterHpAfter: target.hp, actorId: member.id, targetId: target.id, missed: true })
+    return false
+  }
+  return damageEnemy(t, target.id, out.dmg, member.id, false, { crit: out.crit, typeMult: out.typeMult })
 }
 
 /** True if order[index] is a LIVE party member taking its FIRST turn — the point the interactive

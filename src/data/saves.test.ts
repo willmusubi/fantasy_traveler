@@ -11,7 +11,7 @@ import { createSave, deleteSave, renameSave, restoreSave, savesRepo } from './sa
 
 const player: Character = {
   id: 'p', name: '威尔', kind: 'player', classId: 'vanguard',
-  stats: { level: 3, xp: 10, maxHp: 120, maxMp: 24, atk: 18, def: 12, spd: 10, mag: 6 },
+  stats: { level: 3, xp: 10, maxHp: 146, maxMp: 38, str: 18, vit: 15, wis: 14, spr: 14, spd: 13, skl: 14, hit: 14, eva: 10 },
   skills: [], portraitSet: 'player_default', createdAt: '2026-06-03',
 }
 const baseGame: GameState = {

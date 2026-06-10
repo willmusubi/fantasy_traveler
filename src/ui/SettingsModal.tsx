@@ -6,7 +6,8 @@ import { Modal } from './Modal'
 
 const MODELS = [
   { id: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6（推荐 · 性价比）' },
-  { id: 'claude-opus-4-8', label: 'Claude Opus 4.8（最强）' },
+  { id: 'claude-fable-5', label: 'Claude Fable 5（最强 · 旗舰，费用约 Opus 两倍）' },
+  { id: 'claude-opus-4-8', label: 'Claude Opus 4.8（强 · 复杂任务）' },
   { id: 'claude-haiku-4-5-20251001', label: 'Claude Haiku 4.5（最快）' },
 ]
 
@@ -132,6 +133,23 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
               </option>
             ))}
           </select>
+        </div>
+
+        <div className="field">
+          <label htmlFor="setting-depth">战斗深度</label>
+          <select
+            id="setting-depth"
+            className="select"
+            value={settings.combatDepth ?? 'simple'}
+            onChange={(e) => void update({ combatDepth: e.target.value as 'simple' | 'deep' })}
+          >
+            <option value="simple">简单 · 专注任务，无需研究数值（推荐）</option>
+            <option value="deep">深度 · 显示全属性、敌人弱点与蓄力情报</option>
+          </select>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, lineHeight: 1.6 }}>
+            两种模式下战斗规则完全相同——深度模式只是把弱点克制、五行、命中暴击等情报亮出来，
+            供喜欢钻研的玩家针对性搭配；不开也完全不影响通关。
+          </div>
         </div>
 
         <p className="disclosure">

@@ -28,7 +28,7 @@ const texts = () => lastRound().lines.map((l) => l.text).join('\n')
 
 describe('combat log', () => {
   it('records rounds (party attacks, enemy attack, XP, gold) as todos are completed', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     // Two completions — the enemy's gauge fills and it attacks on its turn by the second round.
     for (let i = 0; i < 2; i++) {
       await useTodos.getState().add({ title: `记一笔${i}`, priority: 'high' })
@@ -42,7 +42,7 @@ describe('combat log', () => {
   })
 
   it('records the caster and skill name when a planned skill fires', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     await useGame.getState().setRoundAction(companionId(), 'liuguang') // plan 米拉 → 流光击
     await useTodos.getState().add({ title: '出击', priority: 'high' })
     await useTodos.getState().complete(useTodos.getState().todos[0].id) // executes the round
@@ -51,7 +51,7 @@ describe('combat log', () => {
   })
 
   it('keeps the log bounded across many rounds', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     for (let i = 0; i < 6; i++) {
       await useTodos.getState().add({ title: `t${i}`, priority: 'low' })
       await useTodos.getState().complete(useTodos.getState().todos.find((x) => x.status === 'open')!.id)

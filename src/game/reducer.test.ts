@@ -53,10 +53,10 @@ const todo = (priority: Todo['priority']): Todo => ({
 describe('gameReducer · TodoCompleted', () => {
   it('damages the monster, grants player XP, and raises affinity', () => {
     const r = gameReducer(makeInput(), { type: 'TodoCompleted', todo: todo('high') })
-    // A speed-ordered round of INDIVIDUAL hits: 米拉 (atk20, faster) 40, then 旅人 (atk18) 35.
-    expect(r.gameState.enemies[0].hp).toBe(400 - 40 - 35) // 325
+    // A speed-ordered round of INDIVIDUAL hits (§25 soak 0.5): 米拉 (str18) 40, then 旅人 (str14) 30.
+    expect(r.gameState.enemies[0].hp).toBe(400 - 40 - 30) // 330
     const dmgs = r.effects.filter((e) => e.type === 'damage')
-    expect(dmgs.map((e) => (e.type === 'damage' ? e.amount : 0))).toEqual([40, 35])
+    expect(dmgs.map((e) => (e.type === 'damage' ? e.amount : 0))).toEqual([40, 30])
     expect(dmgs[0]).toMatchObject({ amount: 40, monsterHpAfter: 360, actorId: 'mira' })
     expect(r.effects.find((e) => e.type === 'charXp' && e.characterId === 'player')).toMatchObject({ amount: TODO_XP.high })
     expect(r.characterStats.player.xp).toBe(TODO_XP.high) // small per-task chip XP
@@ -88,14 +88,14 @@ describe('gameReducer · TodoCompleted', () => {
   })
 
   it('a caster basic-attacks with its best offensive stat (mag), not its low atk', () => {
-    const nova = char('medic', 'companion', 'nova') // atk 8, mag 17, no skills → falls back to a basic attack
+    const nova = char('medic', 'companion', 'nova') // support: str 8, wis 15, no skills → basic attack
     const r = gameReducer(
       makeInput({ party: [PLAYER, nova], affinities: { nova: freshAffinity('nova', TODAY) } }),
       { type: 'TodoCompleted', todo: todo('low') },
     )
     const aiHit = r.effects.find((e) => e.type === 'damage' && e.actorId === 'nova')
-    // low priority (mult 1): round(max(atk8, mag17) − def10) = 7. The old atk-only formula floored to 1.
-    expect(aiHit && aiHit.type === 'damage' ? aiHit.amount : -1).toBe(7)
+    // low priority (mult 1): wis 15 swings MAGIC vs mdef (def×0.8=8): 15 − 8×0.5 = 11 (§25).
+    expect(aiHit && aiHit.type === 'damage' ? aiHit.amount : -1).toBe(11)
   })
 })
 

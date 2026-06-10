@@ -4,7 +4,7 @@
 // generation; `storyChapters` are the canon spine (also the offline path). (§22)
 
 import { LOCAL_PACK } from '../content/localPack'
-import type { QuestBlueprint, ScriptChapter, ScriptDef, WorldId } from '../domain/types'
+import type { Element, EnemyArchetype, PhysKind, QuestBlueprint, ScriptChapter, ScriptDef, WorldId } from '../domain/types'
 
 /** A canon antagonist for a world — becomes an encounter enemy and grounds the generator. */
 export interface AntagonistDef {
@@ -13,6 +13,11 @@ export interface AntagonistDef {
   /** 设定 — who they are in canon; injected into the generator + UI lore. */
   description: string
   role: 'boss' | 'mook' | 'rival'
+  // §25 canon combat identity (optional — unauthored falls back to AI/hash assignment).
+  element?: Element
+  physWeak?: PhysKind[]
+  physResist?: PhysKind[]
+  archetype?: EnemyArchetype
 }
 
 export interface WorldDef {
@@ -59,27 +64,27 @@ const STARGAZERS: WorldDef = {
     {
       id: 'sloth_idol', displayName: '惰怠之偶',
       description: '供奉「明天再说」的神像，散发令人松懈的微光，让靠近的人都甘愿沉睡、把今天推给明天。',
-      role: 'boss',
+      role: 'boss', element: 'earth', physWeak: ['strike'], physResist: ['pierce'], archetype: 'boss', // 石偶：打碎它
     },
     {
       id: 'mirage_broker', displayName: '虚妄掮客',
       description: '兜售「完美计划」的掮客，用永远开不了头的宏图，换走人们今天的行动。',
-      role: 'boss',
+      role: 'boss', element: 'water', physWeak: ['slash'], physResist: ['arcane'], archetype: 'boss', // 虚像：一刀两断
     },
     {
       id: 'endless_echo', displayName: '永夜回响',
       description: '吞没一切截止日的永夜回响，让时间在原地空转、无尽循环——本世界最深的暗影。',
-      role: 'boss',
+      role: 'boss', element: 'metal', physWeak: ['arcane'], physResist: ['slash', 'strike'], archetype: 'boss', // 无形：唯法可破（弱魔）
     },
     {
       id: 'fog_sentry', displayName: '迷雾哨兵',
       description: '由犹豫与借口凝成的迷雾守卫，是潜入路上的第一道关卡。',
-      role: 'mook',
+      role: 'mook', element: 'water', physWeak: ['pierce'], archetype: 'mook', // 雾体：一矢穿心
     },
     {
       id: 'idle_brute', displayName: '空耗傀儡',
       description: '由无数被荒废的午后凝成的傀儡，沉重而迟缓，挡在前路。',
-      role: 'mook',
+      role: 'mook', element: 'wood', physWeak: ['slash'], physResist: ['strike'], archetype: 'elite', // 木偶：斩其丝线
     },
   ],
   nativeCompanionIds: ['mira', 'vela', 'nova'],

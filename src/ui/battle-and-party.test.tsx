@@ -25,20 +25,20 @@ afterEach(cleanup)
 
 describe('battle + party UI', () => {
   it('PartyPanel shows each member’s HP and MP', async () => {
-    await useGame.getState().seedNewGame('术士', 'arcanist') // L1 arcanist: HP 85, MP 70
+    await useGame.getState().seedNewGame('术士') // L1 traveler (§25: single profile): HP 120, MP 30
     render(<PartyPanel />)
-    expect(screen.getByText(/HP 85/)).toBeInTheDocument()
-    expect(screen.getByText(/MP 70/)).toBeInTheDocument()
+    expect(screen.getByText(/HP 120/)).toBeInTheDocument()
+    expect(screen.getByText(/MP 30/)).toBeInTheDocument()
   })
 
   it('MonsterHUD shows a start-quest CTA when no quest is active', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     render(<MonsterHUD />)
     expect(screen.getByRole('button', { name: /开启剧情副本/ })).toBeInTheDocument()
   })
 
   it('MonsterHUD shows a speed-ordered turn bar (this round + next round) listing each actor', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     render(<MonsterHUD />)
     const bar = screen.getByLabelText('出手顺序')
     // Two rounds are previewed, so each actor appears more than once (current + next round, plus laps).
@@ -48,7 +48,7 @@ describe('battle + party UI', () => {
   })
 
   it('shows each member’s planned action as a badge on its battle sprite', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     const companion = useGame.getState().characters.find((c) => c.kind === 'companion')!
     await useGame.getState().setRoundAction(companion.id, 'liuguang') // plan 米拉 → 流光击
     const { container } = render(<MonsterHUD />)

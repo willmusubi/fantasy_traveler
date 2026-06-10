@@ -35,7 +35,7 @@ async function stepToEnd(choice: 'basic' = 'basic') {
 
 describe('interactive round (step-through)', () => {
   it('opens a round on completion and resolves it as ONE logged round, paid once', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     useGame.getState().setSteppingEnabled(true)
     await useTodos.getState().add({ title: '出击', priority: 'high' })
 
@@ -53,7 +53,7 @@ describe('interactive round (step-through)', () => {
   })
 
   it('shows the victory settlement once when the killing blow lands mid-round', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     useGame.getState().setSteppingEnabled(true)
     // Weaken the enemy to 1 HP in IDB (the dispatch reads game state from the DB, not the store).
     const gs0 = useGame.getState().gameState!
@@ -72,7 +72,7 @@ describe('interactive round (step-through)', () => {
   })
 
   it('blocks starting a second round while one is still resolving', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     useGame.getState().setSteppingEnabled(true)
     await useTodos.getState().add({ title: 'a', priority: 'high' })
     await useTodos.getState().add({ title: 'b', priority: 'high' })
@@ -86,7 +86,7 @@ describe('interactive round (step-through)', () => {
   })
 
   it('persists an in-progress round and resumes it after a reload', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     useGame.getState().setSteppingEnabled(true)
     await useTodos.getState().add({ title: 't', priority: 'high' })
     await useTodos.getState().complete(openId())

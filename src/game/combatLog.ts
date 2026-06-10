@@ -38,12 +38,19 @@ export function buildLogEntry(effects: GameEffect[], ctx: LogContext): CombatLog
   const xpByChar = new Map<ID, number>()
   const leveled = new Set<ID>()
 
+  // §25 hit markers: 会心一击 / 效果拔群（克制） / 效果不佳（被抗）.
+  const markers = (e: { crit?: boolean; typeMult?: number }): string =>
+    `${e.crit ? '　会心一击！' : ''}${e.typeMult !== undefined && e.typeMult > 1 ? '　效果拔群！' : e.typeMult !== undefined && e.typeMult < 1 ? '　效果不佳…' : ''}`
+
   for (const e of effects) {
     switch (e.type) {
       case 'skillCast': {
         const caster = nameOf(e.casterId)
         const sk = skillName(e.skillId)
-        if (e.skillKind === 'attack') lines.push({ icon: '✦', text: `${caster} 施放「${sk}」→ ${e.targetId ? enemyNameById(e.targetId) : '全体敌人'}  -${e.amount}${e.monsterHpAfter != null ? `（剩 ${e.monsterHpAfter}）` : ''}`, tone: 'good' })
+        if (e.skillKind === 'attack') {
+          if (e.missed) lines.push({ icon: '✦', text: `${caster} 施放「${sk}」→ ${e.targetId ? enemyNameById(e.targetId) : '敌人'}……未命中！`, tone: 'bad' })
+          else lines.push({ icon: '✦', text: `${caster} 施放「${sk}」→ ${e.targetId ? enemyNameById(e.targetId) : '全体敌人'}  -${e.amount}${markers(e)}${e.monsterHpAfter != null ? `（剩 ${e.monsterHpAfter}）` : ''}`, tone: 'good' })
+        }
         else if (e.skillKind === 'heal') lines.push({ icon: '✦', text: `${caster} 施放「${sk}」，恢复 ${e.amount} HP`, tone: 'good' })
         else if (e.skillKind === 'buff') lines.push({ icon: '✦', text: `${caster} 施放「${sk}」，全队攻击 +${e.amount}%`, tone: 'good' })
         else lines.push({ icon: '✦', text: `${caster} 施放「${sk}」，敌方防御 -${e.amount}%`, tone: 'good' })
@@ -52,10 +59,15 @@ export function buildLogEntry(effects: GameEffect[], ctx: LogContext): CombatLog
       case 'damage':
         // One line per individual basic-attack hit (the speed-ordered round), naming who struck.
         // A planned skill's damage is tagged `fromSkill` — its paired skillCast line covers it.
-        if (!e.fromSkill) lines.push({ icon: '⚔', text: `${nameOf(e.actorId)} → ${enemyNameById(e.targetId)}  -${e.amount}（剩 ${e.monsterHpAfter}）`, tone: 'good' })
+        if (e.missed) lines.push({ icon: '⚔', text: `${nameOf(e.actorId)} → ${enemyNameById(e.targetId)}……未命中！`, tone: 'bad' })
+        else if (!e.fromSkill) lines.push({ icon: '⚔', text: `${nameOf(e.actorId)} → ${enemyNameById(e.targetId)}  -${e.amount}${markers(e)}（剩 ${e.monsterHpAfter}）`, tone: 'good' })
         break
       case 'enemyAttack':
-        lines.push({ icon: '💥', text: `${teamLabel} 进攻 ${nameOf(e.targetId)}  -${e.amount}`, tone: 'bad' })
+        if (e.missed) lines.push({ icon: '🌀', text: `${teamLabel} 进攻 ${nameOf(e.targetId)}——被灵巧地闪开了！`, tone: 'good' })
+        else lines.push({ icon: '💥', text: `${teamLabel} ${e.heavy ? '挥出重击' : '进攻'} ${nameOf(e.targetId)}  -${e.amount}`, tone: 'bad' })
+        break
+      case 'enemyTelegraph':
+        lines.push({ icon: '⚡', text: `${enemyNameById(e.enemyId)} 正在${e.text}——下一击非同小可！`, tone: 'bad' })
         break
       case 'monsterGrew':
         lines.push({ icon: '⚠', text: `拖延让 ${primaryName} 更强了（HP +${e.hpDelta}，攻击 +${e.atkDelta}）`, tone: 'bad' })

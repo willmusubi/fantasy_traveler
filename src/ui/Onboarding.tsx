@@ -1,23 +1,17 @@
 import { useRef, useState } from 'react'
 import { importAll, readBackupFile } from '../data/backup'
-import { CLASS_DEFS } from '../domain/config'
-import type { ClassId } from '../domain/types'
-import { t } from '../i18n'
 import { useGame } from '../state/gameStore'
-
-const CLASS_ORDER: ClassId[] = ['vanguard', 'guardian', 'striker', 'arcanist', 'tactician', 'medic']
 
 export function Onboarding() {
   const seedNewGame = useGame((s) => s.seedNewGame)
   const [name, setName] = useState('')
-  const [classId, setClassId] = useState<ClassId>('vanguard')
   const [busy, setBusy] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const [importing, setImporting] = useState(false)
 
   const start = async () => {
     setBusy(true)
-    await seedNewGame(name, classId)
+    await seedNewGame(name)
   }
 
   const onImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -52,25 +46,6 @@ export function Onboarding() {
             maxLength={16}
             onChange={(e) => setName(e.target.value)}
           />
-        </div>
-
-        <div className="field">
-          <label>选择职业（可随时更改）</label>
-          <div className="class-grid">
-            {CLASS_ORDER.map((id) => (
-              <button
-                key={id}
-                type="button"
-                className={`class-card ${classId === id ? 'selected' : ''}`}
-                onClick={() => setClassId(id)}
-              >
-                <div className="cc-name">
-                  {t(`class.${id}`)} <span style={{ color: 'var(--muted)' }}>· {CLASS_DEFS[id].role}</span>
-                </div>
-                <div className="cc-blurb">{t(`class.${id}.blurb`)}</div>
-              </button>
-            ))}
-          </div>
         </div>
 
         <div className="onboard-actions">

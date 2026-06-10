@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MONSTER_BASE_HP, HP_PER_OPEN_HIGH, HP_PER_STAGE } from '../domain/config'
+import { ARCHETYPE_PATTERNS, enemyHpBudget, HP_PER_OPEN_HIGH } from '../domain/config'
 import { statsForClassAtLevel } from './leveling'
 import type { Character, Monster } from '../domain/types'
 import { computeDamage, ctbForecast, ctbResolve, ctbRound, partyAtk, spawnMonster, type CtbUnit } from './combat'
@@ -25,16 +25,16 @@ const monster: Monster = {
 describe('partyAtk', () => {
   it('sums atk across the party', () => {
     const party = [char('vanguard', 'player'), char('striker', 'companion')]
-    expect(partyAtk(party)).toBe(18 + 20)
+    expect(partyAtk(party)).toBe(14 + 18) // balanced 14 + attacker 18 (§25 profiles)
   })
 })
 
 describe('computeDamage', () => {
-  const party = [char('vanguard', 'player'), char('striker', 'companion')] // atk 38
+  const party = [char('vanguard', 'player'), char('striker', 'companion')] // str 32
   it('applies priority multiplier and subtracts def', () => {
-    expect(computeDamage(party, 'high', monster)).toBe(Math.round(38 * 2.5 - 10)) // 85
-    expect(computeDamage(party, 'med', monster)).toBe(Math.round(38 * 1.5 - 10)) // 47
-    expect(computeDamage(party, 'low', monster)).toBe(Math.round(38 * 1 - 10)) // 28
+    expect(computeDamage(party, 'high', monster)).toBe(Math.round(32 * 2.5 - 10)) // 70
+    expect(computeDamage(party, 'med', monster)).toBe(Math.round(32 * 1.5 - 10)) // 38
+    expect(computeDamage(party, 'low', monster)).toBe(Math.round(32 * 1 - 10)) // 22
   })
   it('never deals less than 1', () => {
     const tank: Monster = { ...monster, def: 9999 }
@@ -123,13 +123,27 @@ describe('ctbRound (one task = one round)', () => {
   })
 })
 
-describe('spawnMonster', () => {
-  it('sizes HP from base + open-high load + stage', () => {
+describe('spawnMonster (§25 TTK-budget curves)', () => {
+  it('sizes HP from the archetype TTK budget + open-high load', () => {
     const m = spawnMonster(0, 0, () => 'id')
-    expect(m.maxHp).toBe(MONSTER_BASE_HP)
+    expect(m.maxHp).toBe(enemyHpBudget(0, 'elite'))
     const m2 = spawnMonster(2, 3, () => 'id')
-    expect(m2.maxHp).toBe(MONSTER_BASE_HP + HP_PER_OPEN_HIGH * 3 + HP_PER_STAGE * 2)
+    expect(m2.maxHp).toBe(enemyHpBudget(2, 'elite') + HP_PER_OPEN_HIGH * 3)
     expect(m2.hp).toBe(m2.maxHp)
     expect(m2.level).toBe(3)
+  })
+  it('carries the §25 combat fields + a move rotation; the 心魔 stays a NEUTRAL dummy', () => {
+    const m = spawnMonster(0, 0, () => 'id')
+    expect(m.matk).toBeGreaterThan(0)
+    expect(m.mdef).toBeGreaterThan(0)
+    expect(m.hit).toBe(8)
+    expect(m.eva).toBe(6)
+    expect(m.pattern).toEqual(ARCHETYPE_PATTERNS.elite)
+    expect(m.element).toBeUndefined() // training dummy: no weakness puzzle
+    expect(m.physWeak).toBeUndefined()
+  })
+  it('a boss budget is larger than an elite, which beats a mook (TTK 10/6/4)', () => {
+    expect(enemyHpBudget(0, 'boss')).toBeGreaterThan(enemyHpBudget(0, 'elite'))
+    expect(enemyHpBudget(0, 'elite')).toBeGreaterThan(enemyHpBudget(0, 'mook'))
   })
 })

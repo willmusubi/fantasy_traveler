@@ -73,9 +73,9 @@ describe('active combat — enemy attack, resources, gold', () => {
   })
 
   it('a downed member does not contribute to the party attack', () => {
-    // mira is downed → only the player (vanguard atk 18) attacks: 18*2.5 − def 10 = 35.
+    // mira is downed → only the player (traveler str 14) attacks: 14*2.5 − def 10×0.5 = 30.
     const r = gameReducer(makeInput([PLAYER, MIRA], { resources: { mira: { hp: 0, mp: 24 } } }), todo('high'))
-    expect(r.effects.find((e) => e.type === 'damage')).toMatchObject({ amount: 35 })
+    expect(r.effects.find((e) => e.type === 'damage')).toMatchObject({ amount: 30 })
   })
 
   it('all members downed → setback (revive low + enemy recovers)', () => {
@@ -95,7 +95,7 @@ describe('active combat — enemy attack, resources, gold', () => {
     expect(dmgs).toHaveLength(3) // 米拉 ×2 (lap) + 旅人 ×1
     expect(dmgs.filter((e) => e.type === 'damage' && e.actorId === 'mira')).toHaveLength(2)
     expect(dmgs.filter((e) => e.type === 'damage' && e.actorId === 'player')).toHaveLength(1)
-    expect(r.gameState.enemies[0].hp).toBe(400 - 40 - 40 - 35) // 米拉 40+40, 旅人 35
+    expect(r.gameState.enemies[0].hp).toBe(400 - 40 - 40 - 30) // 米拉 40+40, 旅人 30
   })
 })
 
@@ -106,9 +106,9 @@ describe('active combat — planned skills (executed when a task completes)', ()
   it('a planned attack skill fires on completion — spends MP, damages the enemy', () => {
     const input = makeInput([MIRA], { roundPlan: plan({ mira: 'liuguang' }), resources: { mira: { hp: 95, mp: 20 } } })
     const r = gameReducer(input, todo('low'))
-    // liuguang: mira atk 20 * 1.2 * 3 − def 10 = 62 (skills are NOT priority-scaled).
-    expect(r.effects.find((e) => e.type === 'skillCast')).toMatchObject({ skillKind: 'attack', amount: 62 })
-    expect(r.gameState.enemies[0].hp).toBe(400 - 62) // single member → only the skill hit lands on the monster
+    // liuguang: mira str 18 × 1.2 × 3 − def 10×0.5 = 60 (skills are NOT priority-scaled).
+    expect(r.effects.find((e) => e.type === 'skillCast')).toMatchObject({ skillKind: 'attack', amount: 60 })
+    expect(r.gameState.enemies[0].hp).toBe(400 - 60) // single member → only the skill hit lands on the monster
     expect(r.gameState.resources.mira.mp).toBe(20 - 8 + MP_REGEN_TODO.low) // cast −8, then low regen +6
   })
 
@@ -124,7 +124,7 @@ describe('active combat — planned skills (executed when a task completes)', ()
     const input = makeInput([MIRA], { roundPlan: plan({ mira: 'liuguang' }), resources: { mira: { hp: 95, mp: 2 } } })
     const r = gameReducer(input, todo('high'))
     expect(r.effects.some((e) => e.type === 'skillCast')).toBe(false) // 2 MP < 8 → skill never fires
-    // basic attack instead: mira atk 20 * 2.5 (high) − def 10 = 40.
+    // basic attack instead: mira str 18 × 2.5 (high) − def 10×0.5 = 40.
     expect(r.effects.find((e) => e.type === 'damage')).toMatchObject({ actorId: 'mira', amount: 40 })
   })
 
@@ -135,12 +135,12 @@ describe('active combat — planned skills (executed when a task completes)', ()
   })
 
   it('a planned magic attack skill scales off the caster mag, not atk', () => {
-    const VELA = char('tactician', 'companion', 'vela', 3) // L3 tactician: mag 20, atk 14, spd 18 (laps)
+    const VELA = char('tactician', 'companion', 'vela', 3) // L3 trickster: wis 19, str 11, spd 18 (laps)
     const r = gameReducer(makeInput([VELA], { roundPlan: plan({ vela: 'yexing' }) }), todo('low'))
-    // mag 20 * 1.4 * 3 − def 10 = 74 (would be 49 if it wrongly scaled off atk 14). The skillCast
+    // wis 19 × 1.4 × 3 − mdef(8)×0.5 = 76 (would be ~42 off str 11 vs pdef). The skillCast
     // amount is the definitive proof; VELA also laps a basic attack, so monster.hp drops by a bit more.
-    expect(r.effects.find((e) => e.type === 'skillCast')).toMatchObject({ skillKind: 'attack', amount: 74 })
-    expect(r.gameState.enemies[0].hp).toBeLessThanOrEqual(400 - 74)
+    expect(r.effects.find((e) => e.type === 'skillCast')).toMatchObject({ skillKind: 'attack', amount: 76 })
+    expect(r.gameState.enemies[0].hp).toBeLessThanOrEqual(400 - 76)
   })
 
   it('a planned buff fires only when the skill is unlocked by level', () => {

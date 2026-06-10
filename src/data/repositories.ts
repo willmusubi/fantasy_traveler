@@ -15,7 +15,8 @@ import type {
   Settings,
   Todo,
 } from '../domain/types'
-import { withStatsDefaults } from '../game/leveling'
+import { withStatsDefaults } from '../companion/roster'
+import { withMonsterDefaults } from '../game/combat'
 import { getDB, SINGLETON } from './db'
 
 export const charactersRepo = {
@@ -99,12 +100,14 @@ export function withGameStateDefaults(s: GameState): GameState {
   // `enemies` is the new source of truth; synthesize from a legacy singular `monster` if absent.
   // (spd is backfilled for pre-speed saves — default = MONSTER_BASE_SPD; new spawns set it.)
   const legacyMonster = s.monster ? { ...s.monster, spd: s.monster.spd ?? 9 } : undefined
-  const enemies =
+  // §25: withMonsterDefaults backfills matk/mdef/hit/eva/archetype/pattern on old saves.
+  const enemies = (
     s.enemies && s.enemies.length > 0
       ? s.enemies.map((m) => ({ ...m, spd: m.spd ?? 9 }))
       : legacyMonster
         ? [legacyMonster]
         : []
+  ).map(withMonsterDefaults)
   // A round snapshotted under the OLD shape (has enemyAtStart, no enemiesAtStart) cannot resume
   // safely against the multi-enemy resolver — clear it (a refresh mid-round just restarts the task).
   const ar = s.activeRound

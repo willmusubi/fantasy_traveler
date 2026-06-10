@@ -26,7 +26,7 @@ const openIds = () =>
 
 describe('todo store — un-check / edit / reorder', () => {
   it('reopen un-checks a todo and re-completing does NOT re-grant rewards (grant-once)', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     const companionId = useGame.getState().characters.find((c) => c.kind === 'companion')!.id
 
     await useTodos.getState().add({ title: '攻克难关', priority: 'high' })
@@ -155,7 +155,7 @@ describe('partitionTodayTodos — 今日待办 panel buckets', () => {
 
 describe('todo store — countdown timer', () => {
   it('startTimer arms; sweepTimers lands one enemy hit, stamps fired, and never re-fires', async () => {
-    await useGame.getState().seedNewGame('计时', 'vanguard')
+    await useGame.getState().seedNewGame('计时')
     await useTodos.getState().add({ title: '番茄钟', priority: 'high' })
     const id = useTodos.getState().todos[0].id
 
@@ -174,7 +174,7 @@ describe('todo store — countdown timer', () => {
     expect(t.timerFiredAt).toBeTruthy() // spent
     const log = useGame.getState().gameState!.combatLog
     expect(log[log.length - 1].lines.some((l) => l.text.includes('进攻'))).toBe(true)
-    expect(useGame.getState().gameState!.enemies[0].maxHp).toBe(900) // no growth
+    expect(useGame.getState().gameState!.enemies[0].maxHp).toBe(373) // no growth
 
     // Second sweep is a no-op (fired guard): nothing changes.
     const firedAt = t.timerFiredAt
@@ -185,7 +185,7 @@ describe('todo store — countdown timer', () => {
   })
 
   it('completing an armed todo disarms it — a later sweep fires nothing', async () => {
-    await useGame.getState().seedNewGame('计时', 'vanguard')
+    await useGame.getState().seedNewGame('计时')
     await useTodos.getState().add({ title: '按时完成', priority: 'med' })
     const id = useTodos.getState().todos[0].id
     await useTodos.getState().startTimer(id, 1)
@@ -202,7 +202,7 @@ describe('todo store — countdown timer', () => {
   })
 
   it('cancelTimer disarms a running timer so it never fires', async () => {
-    await useGame.getState().seedNewGame('计时', 'vanguard')
+    await useGame.getState().seedNewGame('计时')
     await useTodos.getState().add({ title: '取消', priority: 'low' })
     const id = useTodos.getState().todos[0].id
     await useTodos.getState().startTimer(id, 1)
@@ -215,7 +215,7 @@ describe('todo store — countdown timer', () => {
   })
 
   it('reopen clears the fired guard so the timer can be re-armed fresh', async () => {
-    await useGame.getState().seedNewGame('计时', 'vanguard')
+    await useGame.getState().seedNewGame('计时')
     await useTodos.getState().add({ title: '重开', priority: 'med' })
     const id = useTodos.getState().todos[0].id
     await useTodos.getState().startTimer(id, 1)
@@ -229,7 +229,7 @@ describe('todo store — countdown timer', () => {
   })
 
   it('defers firing while an interactive round is mid-resolution', async () => {
-    await useGame.getState().seedNewGame('计时', 'vanguard')
+    await useGame.getState().seedNewGame('计时')
     await useTodos.getState().add({ title: '推迟', priority: 'high' })
     const id = useTodos.getState().todos[0].id
     await useTodos.getState().startTimer(id, 1)

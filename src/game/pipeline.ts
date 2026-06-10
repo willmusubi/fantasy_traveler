@@ -11,7 +11,7 @@ import { localDateKey } from '../domain/dates'
 import { materializeQuest } from '../ai/storyline'
 import { buildLogEntry } from './combatLog'
 import { teamFromEncounter } from './combat'
-import { withStatsDefaults } from './leveling'
+import { withStatsDefaults } from '../companion/roster'
 import type { Affinity, Character } from '../domain/types'
 import { activeSynergiesFor } from '../world/relationships'
 import { scriptDefFor } from '../world/worlds'
@@ -84,6 +84,7 @@ export async function dispatchEvent(
       party,
       now: new Date(),
       newId,
+      roll: Math.random, // §25: live RNG enters ONLY here — the reducer stays pure
       openHighCount,
       ownedEquipment: gameState.ownedEquipment ?? [],
       activeSynergies,

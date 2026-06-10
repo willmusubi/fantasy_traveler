@@ -3,7 +3,7 @@
 // HP), unlocked by character level. (§8, §21)
 
 import { LOCAL_PACK } from '../content/localPack'
-import type { Character, SkillId } from '../domain/types'
+import type { Character, Element, PhysKind, SkillId } from '../domain/types'
 
 export interface SkillDef {
   id: SkillId
@@ -11,9 +11,15 @@ export interface SkillDef {
   kind: 'attack' | 'heal' | 'buff' | 'debuff'
   /** Effect coefficient: attack/heal → stat multiplier; buff/debuff → percent (0.3 = 30%). */
   power: number
-  /** Which stat scales an ATTACK skill's damage: physical ('atk', default) or magic ('mag').
-   *  Heal always scales off mag. Lets casters' offensive skills use their real stat. */
+  /** Which stat scales an ATTACK skill's damage: physical ('atk' → str/物攻, default) or
+   *  magic ('mag' → wis/魔攻). Heals always scale off wis. The serialized literals predate
+   *  the §25 rename and are kept so content packs never break. */
   scaling?: 'atk' | 'mag'
+  /** §25 — optional attack identity: physical category override (default: physical skills
+   *  inherit the equipped weapon's kind; magic skills are arcane). */
+  physKind?: PhysKind
+  /** §25 — optional 五行 (default: caster's weapon element, else innate element). */
+  element?: Element
   target: 'enemy' | 'ally' | 'self' | 'allEnemies' | 'allAllies'
   /** MP spent to cast. */
   mpCost: number

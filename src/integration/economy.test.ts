@@ -22,7 +22,7 @@ const playerId = () => useGame.getState().characters.find((c) => c.kind === 'pla
 
 describe('gold economy + shop', () => {
   it('earns gold by completing a todo', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     expect(useGame.getState().gameState!.gold).toBe(0)
     await useTodos.getState().add({ title: '赚点钱', priority: 'high' })
     await useTodos.getState().complete(useTodos.getState().todos[0].id)
@@ -30,7 +30,7 @@ describe('gold economy + shop', () => {
   })
 
   it('buying an HP potion spends gold and heals the party', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     const gs = useGame.getState().gameState!
     useGame.setState({ gameState: { ...gs, gold: 100, resources: { [playerId()]: { hp: 10, mp: 0 } } } })
 
@@ -40,7 +40,7 @@ describe('gold economy + shop', () => {
   })
 
   it('buying equipment spends gold and adds it to the stash', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     const gs = useGame.getState().gameState!
     const before = gs.ownedEquipment.length
     useGame.setState({ gameState: { ...gs, gold: 200 } })
@@ -51,7 +51,7 @@ describe('gold economy + shop', () => {
   })
 
   it('refuses a purchase the player cannot afford', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard') // gold 0
+    await useGame.getState().seedNewGame('阿旅') // gold 0
     await useGame.getState().buyPotion('hp_potion')
     expect(useGame.getState().gameState!.gold).toBe(0)
   })

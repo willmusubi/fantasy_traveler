@@ -28,7 +28,7 @@ afterEach(cleanup)
 describe('TodoPanel interactions', () => {
   it('checks then un-checks a task via the same button', async () => {
     const user = userEvent.setup()
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     await useTodos.getState().add({ title: '写日报', priority: 'med' })
     render(<TodoPanel />)
 

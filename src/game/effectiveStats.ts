@@ -15,9 +15,14 @@ export interface CombatContext {
 
 export const EMPTY_COMBAT_CONTEXT: CombatContext = { ownedEquipment: [], activeSynergies: [] }
 
-const FLAT_KEYS: (keyof Omit<Stats, 'level' | 'xp'>)[] = ['maxHp', 'maxMp', 'atk', 'def', 'spd', 'mag']
+const FLAT_KEYS: (keyof Omit<Stats, 'level' | 'xp'>)[] = [
+  'maxHp', 'maxMp', 'str', 'vit', 'wis', 'spr', 'spd', 'skl', 'hit', 'eva',
+]
 
-/** Effective stats for one character given equipment + active party synergies. */
+/** Effective stats for one character given equipment + active party synergies.
+ *  §25 note: persisted bonus/buff KEY NAMES predate the stat rename and are kept
+ *  (saves + content packs carry them) — they map onto the new stats here:
+ *  flatAtk/atkPct→str, defPct→vit, magPct→wis, spdPct→spd. */
 export function effectiveStats(char: Character, ctx: CombatContext): Stats {
   const s: Stats = { ...char.stats }
 
@@ -35,9 +40,9 @@ export function effectiveStats(char: Character, ctx: CombatContext): Stats {
   // 2. Party-wide synergy bonuses (flat then percentage).
   for (const syn of ctx.activeSynergies) {
     const b = syn.bonus
-    if (b.flatAtk) s.atk += b.flatAtk
-    if (b.atkPct) s.atk = Math.round(s.atk * (1 + b.atkPct))
-    if (b.defPct) s.def = Math.round(s.def * (1 + b.defPct))
+    if (b.flatAtk) s.str += b.flatAtk
+    if (b.atkPct) s.str = Math.round(s.str * (1 + b.atkPct))
+    if (b.defPct) s.vit = Math.round(s.vit * (1 + b.defPct))
     if (b.spdPct) s.spd = Math.round(s.spd * (1 + b.spdPct))
   }
 
@@ -48,11 +53,11 @@ export function effectiveStats(char: Character, ctx: CombatContext): Stats {
   const sumPct = (kind: PartyBuff['kind']): number =>
     buffs.reduce((m, b) => (b.kind === kind ? m + b.magnitude : m), 0)
   const dp = sumPct('defPct')
-  if (dp) s.def = Math.max(0, Math.round(s.def * (1 + dp)))
+  if (dp) s.vit = Math.max(0, Math.round(s.vit * (1 + dp)))
   const sp = sumPct('spdPct')
   if (sp) s.spd = Math.max(1, Math.round(s.spd * (1 + sp)))
   const mp = sumPct('magPct')
-  if (mp) s.mag = Math.max(0, Math.round(s.mag * (1 + mp)))
+  if (mp) s.wis = Math.max(0, Math.round(s.wis * (1 + mp)))
 
   return s
 }

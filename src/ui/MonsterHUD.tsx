@@ -6,6 +6,7 @@ import { effectiveStats } from '../game/effectiveStats'
 import { resourceOf } from '../game/resources'
 import { t } from '../i18n'
 import { selectPlayer, useGame } from '../state/gameStore'
+import { isDeepCombat, useSettings } from '../state/settingsStore'
 import { useQuest } from '../state/questStore'
 import { activeSynergiesFor } from '../world/relationships'
 import { FIRST_WORLD_ID, scriptDefFor, WORLD_DEFS } from '../world/worlds'
@@ -26,6 +27,7 @@ export function MonsterHUD() {
   const combatTargetId = useGame((s) => s.combatTargetId)
   const setCombatTarget = useGame((s) => s.setCombatTarget)
   const activeQuest = useGame((s) => s.activeQuest)
+  const deep = useSettings((s) => isDeepCombat(s.settings))
   const [defaultsOpen, setDefaultsOpen] = useState(false)
   const questStatus = useQuest((s) => s.status)
   const startQuest = useQuest((s) => s.startQuest)
@@ -135,6 +137,7 @@ export function MonsterHUD() {
               isTarget={allyDeciding && m.id === effectiveTargetId}
               active={m.id === activeEnemyId}
               onSelect={allyDeciding ? setCombatTarget : undefined}
+              deepIntel={deep}
             />
           ))}
         </div>

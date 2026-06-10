@@ -29,7 +29,7 @@ describe('render resilience against legacy (pre-§22) saves', () => {
   it('PartyPanel renders after completing a todo on a save missing unlockedCompanionIds', async () => {
     // Seed a normal game, then overwrite the persisted gameState with a legacy
     // (pre-§22) shape — exactly what an older save in the browser looks like.
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     const seeded = useGame.getState().gameState!
     const legacy = { ...seeded } as Partial<GameState>
     delete legacy.unlockedCompanionIds

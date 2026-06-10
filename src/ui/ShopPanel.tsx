@@ -1,3 +1,4 @@
+import { WEAPON_CATEGORY } from '../domain/config'
 import type { EquipmentDef } from '../world/equipment'
 import { EQUIPMENT_DEFS } from '../world/equipment'
 import { SHOP_POTIONS } from '../world/shop'
@@ -6,7 +7,11 @@ import { useGame } from '../state/gameStore'
 
 function bonusText(def: EquipmentDef): string {
   const b = def.bonus
-  return (Object.keys(b) as (keyof typeof b)[]).map((k) => `${t(`stat.${k}`)}+${b[k]}`).join(' ')
+  const stats = (Object.keys(b) as (keyof typeof b)[]).map((k) => `${t(`stat.${k}`)}+${b[k]}`).join(' ')
+  // §25 weapon identity: kind (类别) + optional 五行 — shown so weapon shopping is informed.
+  const kind = def.weaponKind ? `【${t(`weapon.${def.weaponKind}`)}·${t(`phys.${WEAPON_CATEGORY[def.weaponKind]}`)}】` : ''
+  const elem = def.element ? `〔${t(`element.${def.element}`)}〕` : ''
+  return `${kind}${elem}${stats}`
 }
 
 export function ShopPanel() {

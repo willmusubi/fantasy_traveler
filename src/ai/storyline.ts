@@ -5,7 +5,7 @@
 // The Anthropic SDK is dynamically imported inside generateStoryline (below) so it stays out of
 // the eager main chunk; mirrors ai/client.ts. No top-level import → no SDK in first paint.
 import { CHAT_TIMEOUT_MS, DEFAULT_MODEL } from '../domain/config'
-import type { Quest, QuestBlueprint, WorldId } from '../domain/types'
+import type { Element, EnemyArchetype, PhysKind, Quest, QuestBlueprint, WorldId } from '../domain/types'
 import { getWorldEquipment } from '../world/equipment'
 import type { WorldDef } from '../world/worlds'
 import { AIError, classify } from './client'
@@ -45,20 +45,38 @@ export function coerceQuest(
   const r = (raw ?? {}) as Record<string, unknown>
   const byName = new Map(world.antagonists.map((a) => [a.displayName, a.id]))
   const defaultEnemy = world.antagonists[0]?.displayName ?? '神秘对手'
+  const byId = new Map(world.antagonists.map((a) => [a.id, a]))
+  const ELEMENTS = new Set(['metal', 'wood', 'water', 'fire', 'earth'])
+  const PHYS = new Set(['slash', 'pierce', 'strike', 'arcane'])
+  const ARCH = new Set(['mook', 'elite', 'boss'])
   const rawEnc = Array.isArray(r.encounters) ? r.encounters : []
-  const encounters = rawEnc.slice(0, 4).map((raw) => {
+  const total = Math.min(rawEnc.length, 4)
+  const encounters = rawEnc.slice(0, 4).map((raw, i) => {
     const e = (raw ?? {}) as Record<string, unknown>
     const enemyName = str(e.enemyName, defaultEnemy, 40)
+    const antagonistId = byName.get(enemyName) // link to canon when the name matches the roster
+    const canon = antagonistId ? byId.get(antagonistId) : undefined
+    // §25 combat identity — precedence: canon antagonist > model assignment > spawn-time hash.
+    const mElement = typeof e.element === 'string' && ELEMENTS.has(e.element) ? (e.element as Element) : undefined
+    const mWeak = Array.isArray(e.physWeak)
+      ? (e.physWeak.map(String).filter((k) => PHYS.has(k)).slice(0, 2) as PhysKind[])
+      : undefined
+    const mArch = typeof e.archetype === 'string' && ARCH.has(e.archetype) ? (e.archetype as EnemyArchetype) : undefined
     // NOTE: multi-enemy `adds` are NOT parsed here in V1 — AI-generated encounters stay single-enemy.
     // (Future: parse + clamp e.adds with the same byName/clamp helpers to allow generated teams.)
     return {
       enemyName,
       enemyTheme: str(e.enemyTheme, '', 80),
-      antagonistId: byName.get(enemyName), // link to canon when the name matches the roster
+      antagonistId,
       hpScale: clamp(e.hpScale, 0.8, 1.6),
       defScale: clamp(e.defScale, 0.8, 1.4),
       narrationIntro: str(e.narrationIntro, '行动开始了。', 240),
       narrationVictory: str(e.narrationVictory, '行动成功！', 240),
+      element: canon?.element ?? mElement,
+      physWeak: canon?.physWeak ?? (mWeak && mWeak.length > 0 ? mWeak : undefined),
+      physResist: canon?.physResist,
+      // Default ladder: the FINAL encounter of a quest is the boss; earlier ones elites.
+      archetype: canon?.archetype ?? mArch ?? (i === total - 1 ? 'boss' : 'elite'),
     }
   })
   if (encounters.length < 2) throw new AIError('parse', '生成的遭遇数量不足')

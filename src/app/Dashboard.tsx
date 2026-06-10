@@ -23,7 +23,6 @@ import { ShopPanel } from '../ui/ShopPanel'
 import { TodoPanel } from '../ui/TodoPanel'
 import { Toasts } from '../ui/Toasts'
 import { VictoryBanner } from '../ui/VictoryBanner'
-import { t } from '../i18n'
 
 type RightView = 'home' | 'quest' | 'dungeon' | 'party' | 'gear' | 'shop'
 type Zone = 'adventure' | 'calendar'
@@ -71,7 +70,7 @@ export function Dashboard() {
         <div className="topbar-actions">
           {zone === 'adventure' && player && (
             <span className="chip">
-              🧭 {player.name} · {t(`class.${player.classId}`)} Lv.{player.stats.level}
+              🧭 {player.name} · 旅人 Lv.{player.stats.level}
             </span>
           )}
           {zone === 'adventure' && <span className="chip">🪙 {gold}</span>}

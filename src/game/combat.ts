@@ -1,29 +1,35 @@
-// Pure combat math (§21). No clock, no rng, no I/O — trivially unit-testable.
+// Pure combat math (§21, §25). No clock, no rng, no I/O — trivially unit-testable.
 
 import {
+  ARCHETYPE_PATTERNS,
+  clampStage,
   CTB_THRESHOLD,
   DEFEAT_GOLD_PER_HP,
   DEFEAT_GOLD_PER_LEVEL,
   DEFEAT_XP_PER_HP,
   DEFEAT_XP_PER_LEVEL,
+  ENEMY_ATK,
+  ENEMY_EVA,
+  ENEMY_HIT,
+  ENEMY_MATK,
+  ENEMY_MDEF,
+  ENEMY_PDEF,
+  enemyHpBudget,
   HP_PER_OPEN_HIGH,
-  HP_PER_STAGE,
-  MONSTER_BASE_ATK,
-  MONSTER_BASE_DEF,
-  MONSTER_BASE_HP,
   MONSTER_BASE_SPD,
-  MONSTER_DEF_PER_STAGE,
   MONSTER_SPD_PER_STAGE,
   PRIORITY_MULT,
 } from '../domain/config'
-import type { Character, EncounterSpec, Monster, Priority, TurnActor } from '../domain/types'
+import type {
+  Character, Element, EncounterSpec, EnemyArchetype, Monster, PhysKind, Priority, TurnActor,
+} from '../domain/types'
 import { EMPTY_COMBAT_CONTEXT, effectiveStats, type CombatContext } from './effectiveStats'
 
 export type { TurnActor }
 
-/** Sum of EFFECTIVE atk across the party (equipment + synergies). */
+/** Sum of EFFECTIVE str (物攻) across the party (equipment + synergies). */
 export function partyAtk(party: Character[], ctx: CombatContext = EMPTY_COMBAT_CONTEXT): number {
-  return party.reduce((sum, c) => sum + effectiveStats(c, ctx).atk, 0)
+  return party.reduce((sum, c) => sum + effectiveStats(c, ctx).str, 0)
 }
 
 /** Canonical overworld damage from completing a todo. */
@@ -147,36 +153,77 @@ export function defeatRewards(monster: Monster): { xp: number; gold: number } {
   }
 }
 
-/** Spawn a fresh monster for the given story stage and current high-priority load. */
+// ---------- §25 enemy spawning (TTK-budget curves + weakness assignment) ----------
+
+const ELEMENT_POOL: Element[] = ['metal', 'wood', 'water', 'fire', 'earth']
+const PHYS_POOL: PhysKind[] = ['slash', 'pierce', 'strike', 'arcane']
+
+/** FNV-1a — deterministic weakness assignment for unauthored enemies. */
+function fnv1a(s: string): number {
+  let h = 0x811c9dc5
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i)
+    h = Math.imul(h, 0x01000193)
+  }
+  return h >>> 0
+}
+
+/** Derive element + weakness tags from an enemy's identity. Every quest enemy gets a
+ *  puzzle to solve even when the author/AI assigned nothing — zero authoring cost. */
+export function hashWeaknesses(seed: string): { element: Element; physWeak: PhysKind[]; physResist: PhysKind[] } {
+  const h = fnv1a(seed)
+  const weak = PHYS_POOL[(h >>> 3) % 4]
+  const resistCandidate = PHYS_POOL[(h >>> 6) % 4]
+  return {
+    element: ELEMENT_POOL[h % 5],
+    physWeak: [weak],
+    physResist: resistCandidate === weak ? [] : [resistCandidate],
+  }
+}
+
+/** Spawn a fresh monster for the given story stage and current high-priority load.
+ *  The open-world 心魔 is a NEUTRAL training dummy (no element/weaknesses) — the depth
+ *  layer lives on quest enemies; simple-mode pacing is untouched by it. */
 export function spawnMonster(
   storyStage: number,
   openHighCount: number,
   idFactory: () => string,
+  archetype: EnemyArchetype = 'elite',
 ): Monster {
-  const maxHp =
-    MONSTER_BASE_HP + HP_PER_OPEN_HIGH * openHighCount + storyStage * HP_PER_STAGE
+  const stage = clampStage(storyStage)
+  const maxHp = enemyHpBudget(stage, archetype) + HP_PER_OPEN_HIGH * openHighCount
   return {
     id: idFactory(),
     nameKey: 'monster.procrastination',
-    level: storyStage + 1,
+    level: stage + 1,
     maxHp,
     hp: maxHp,
-    atk: MONSTER_BASE_ATK + storyStage,
-    def: MONSTER_BASE_DEF + storyStage * MONSTER_DEF_PER_STAGE,
-    spd: MONSTER_BASE_SPD + storyStage * MONSTER_SPD_PER_STAGE,
+    atk: ENEMY_ATK(stage),
+    def: ENEMY_PDEF(stage),
+    spd: MONSTER_BASE_SPD + stage * MONSTER_SPD_PER_STAGE,
+    matk: ENEMY_MATK(stage),
+    mdef: ENEMY_MDEF(stage),
+    hit: ENEMY_HIT(stage),
+    eva: ENEMY_EVA(stage),
+    archetype,
+    pattern: ARCHETYPE_PATTERNS[archetype].map((m) => ({ ...m })),
+    patternIdx: 0,
     growth: 1,
   }
 }
 
-/** Spawn the monster for a quest encounter: base spawn scaled by the encounter. */
+/** Spawn the monster for a quest encounter: budget spawn scaled by the encounter, plus
+ *  §25 identity (element/weaknesses): authored → as written; else hash-assigned. */
 export function monsterFromEncounter(
   enc: EncounterSpec,
   storyStage: number,
   openHighCount: number,
   idFactory: () => string,
 ): Monster {
-  const base = spawnMonster(storyStage, openHighCount, idFactory)
+  const archetype = enc.archetype ?? 'elite'
+  const base = spawnMonster(storyStage, openHighCount, idFactory, archetype)
   const maxHp = Math.max(1, Math.round(base.maxHp * enc.hpScale))
+  const hashed = hashWeaknesses(enc.antagonistId ?? enc.enemyName)
   return {
     ...base,
     maxHp,
@@ -184,11 +231,15 @@ export function monsterFromEncounter(
     def: Math.max(0, Math.round(base.def * enc.defScale)),
     displayName: enc.enemyName,
     theme: enc.enemyTheme,
+    element: enc.element ?? hashed.element,
+    physWeak: enc.physWeak ?? hashed.physWeak,
+    physResist: enc.physResist ?? hashed.physResist,
   }
 }
 
 /** Build the full enemy TEAM for an encounter: primary (enemies[0]) + each add (its own scaling).
- *  An encounter with no `adds` returns a 1-element team — identical to the old single-enemy spawn. */
+ *  An encounter with no `adds` returns a 1-element team — identical to the old single-enemy spawn.
+ *  §25: the primary defaults to 'elite'; escorts default to 'mook' (lighter TTK budget). */
 export function teamFromEncounter(
   enc: EncounterSpec,
   storyStage: number,
@@ -198,13 +249,37 @@ export function teamFromEncounter(
   const primary = monsterFromEncounter(enc, storyStage, openHighCount, idFactory)
   const adds = (enc.adds ?? []).map((a) =>
     monsterFromEncounter(
-      { ...enc, enemyName: a.enemyName, enemyTheme: a.enemyTheme, antagonistId: a.antagonistId, hpScale: a.hpScale, defScale: a.defScale },
+      {
+        ...enc,
+        enemyName: a.enemyName, enemyTheme: a.enemyTheme, antagonistId: a.antagonistId,
+        hpScale: a.hpScale, defScale: a.defScale,
+        element: a.element, physWeak: a.physWeak, physResist: a.physResist,
+        archetype: a.archetype ?? 'mook',
+      },
       storyStage,
       openHighCount,
       idFactory,
     ),
   )
   return [primary, ...adds]
+}
+
+/** §25 read-time backfill for pre-§25 saved enemies (same pattern as character stats):
+ *  derive the new combat fields from level/atk/def; idempotent. */
+export function withMonsterDefaults(m: Monster): Monster {
+  if (m.matk != null && m.pattern != null && m.hit != null) return m
+  const stage = clampStage(m.level - 1)
+  const archetype: EnemyArchetype = m.archetype ?? 'elite'
+  return {
+    ...m,
+    matk: m.matk ?? Math.round(m.atk * 0.9),
+    mdef: m.mdef ?? Math.round(m.def * 0.8),
+    hit: m.hit ?? ENEMY_HIT(stage),
+    eva: m.eva ?? ENEMY_EVA(stage),
+    archetype,
+    pattern: m.pattern ?? ARCHETYPE_PATTERNS[archetype].map((mv) => ({ ...mv })),
+    patternIdx: m.patternIdx ?? 0,
+  }
 }
 
 // ---------- Enemy-team helpers (multi-enemy combat) ----------

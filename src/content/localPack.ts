@@ -36,10 +36,22 @@ export interface ContentPack {
 }
 
 // Eagerly collect any gitignored local pack(s). With no local dir, Vite returns {} → no override.
-const modules = import.meta.glob<{ pack?: ContentPack; default?: ContentPack }>('./local/*.ts', { eager: true })
+// MUST stay a LITERAL `import.meta.glob(...)` call — Vite's glob import is a compile-time static
+// transform that only recognizes this exact syntax (an aliased call silently becomes undefined in
+// the browser and the whole pack stops loading). Under plain Node (e.g. `npx tsx
+// scripts/sim-balance.ts`) the property doesn't exist → TypeError → caught → {} (shipped content).
+type PackModule = { pack?: ContentPack; default?: ContentPack }
+let modules: Record<string, PackModule> = {}
+try {
+  modules = import.meta.glob<PackModule>('./local/*.ts', { eager: true })
+} catch {
+  modules = {}
+}
 
 function resolveLocalPack(): ContentPack | undefined {
-  if (import.meta.env.MODE === 'test') return undefined // tests assert the shipped IP-free content
+  // Optional-chained literal: vitest/dev have env (MODE 'test' excludes the pack); plain Node has
+  // no import.meta.env → undefined → pack resolution proceeds (then modules is {} anyway).
+  if (import.meta.env?.MODE === 'test') return undefined // tests assert the shipped IP-free content
   for (const m of Object.values(modules)) {
     const p = m.pack ?? m.default
     if (p) return p

@@ -1,7 +1,7 @@
 // Builds the rolling life-context fed to the companion LLM (§12, §21). Typed output
 // + deterministic drop order so it's testable and token-bounded. Pure.
 
-import { CLASS_DEFS } from '../domain/config'
+import { profileFor } from '../companion/roster'
 import { isOverdue, localDateKey } from '../domain/dates'
 import type { AffinityRank, Character, MoodFlag, Todo } from '../domain/types'
 
@@ -44,7 +44,7 @@ export function buildContext(args: {
   return {
     player: {
       name: player.name,
-      className: CLASS_DEFS[player.classId].role,
+      className: profileFor(player).role,
       level: player.stats.level,
     },
     affinityRank,

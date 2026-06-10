@@ -40,7 +40,7 @@ beforeEach(async () => {
 
 describe('§23 副本 end-to-end', () => {
   it('a campaign finishes through the real pipeline with NO endless respawn (bug fix)', async () => {
-    await useGame.getState().seedNewGame('旅人', 'vanguard')
+    await useGame.getState().seedNewGame('旅人')
     const script = oneChapterScript('s-fin')
     registerRuntimeScript(script)
 
@@ -63,7 +63,7 @@ describe('§23 副本 end-to-end', () => {
   })
 
   it('saves the active campaign as a 副本, then replays it from the start (progress + flags reset)', async () => {
-    await useGame.getState().seedNewGame('旅人', 'vanguard')
+    await useGame.getState().seedNewGame('旅人')
     const script = oneChapterScript('s-rep')
     registerRuntimeScript(script)
 

@@ -9,7 +9,12 @@ interface SettingsStore {
   update: (patch: Partial<Settings>) => Promise<void>
 }
 
-const DEFAULTS: Settings = { model: 'claude-sonnet-4-6', language: 'zh-CN', theme: 'dusk' }
+const DEFAULTS: Settings = { model: 'claude-sonnet-4-6', language: 'zh-CN', theme: 'dusk', combatDepth: 'simple' }
+
+/** §25 helper: deep-mode UI surfaces on? (missing field on old saves = simple). */
+export function isDeepCombat(s: Settings): boolean {
+  return s.combatDepth === 'deep'
+}
 
 export const useSettings = create<SettingsStore>((set, get) => ({
   settings: DEFAULTS,

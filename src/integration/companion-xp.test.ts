@@ -25,7 +25,7 @@ const xpOf = (id: string) => useGame.getState().characters.find((c) => c.id === 
 
 describe('companion XP + MP stat', () => {
   it('every on-field companion gains XP when a todo is completed, and it persists', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     const companionId = useGame.getState().characters.find((c) => c.kind === 'companion')!.id
     const playerId = useGame.getState().characters.find((c) => c.kind === 'player')!.id
     expect(xpOf(companionId)).toBe(0)
@@ -40,25 +40,28 @@ describe('companion XP + MP stat', () => {
   })
 
   it('seeded characters carry an MP pool bound to their class', async () => {
-    await useGame.getState().seedNewGame('术士', 'arcanist')
+    await useGame.getState().seedNewGame('术士')
     const player = useGame.getState().characters.find((c) => c.kind === 'player')!
-    expect(player.stats.maxMp).toBe(70) // arcanist L1 base MP (caster → large pool)
+    expect(player.stats.maxMp).toBe(30) // traveler profile L1 base MP (§25: no class picker)
     const companion = useGame.getState().characters.find((c) => c.kind === 'companion')!
     expect(companion.stats.maxMp).toBeGreaterThan(0)
   })
 
   it('backfills maxMp on a pre-MP character save at read time', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'medic')
+    await useGame.getState().seedNewGame('阿旅')
     const player = useGame.getState().characters.find((c) => c.kind === 'player')!
     // A legacy row written before maxMp existed (omit it explicitly).
     const s = player.stats
+    // Old 8-stat shape (atk/def/mag — predates the §25 rename) with maxMp also missing.
     const legacy = {
       ...player,
-      stats: { level: s.level, xp: s.xp, maxHp: s.maxHp, atk: s.atk, def: s.def, spd: s.spd, mag: s.mag },
+      stats: { level: s.level, xp: s.xp, maxHp: s.maxHp, atk: 14, def: 11, spd: 11, mag: 10 },
     } as unknown as Character
     await charactersRepo.put(legacy)
 
     const reloaded = await charactersRepo.get(player.id)
-    expect(reloaded!.stats.maxMp).toBe(60) // medic L1 base MP, recomputed from class+level
+    expect(reloaded!.stats.maxMp).toBe(30) // traveler L1 MP, recomputed from profile+level
+    expect(reloaded!.stats.str).toBe(14) // §25 ten-stat shape fully rebuilt
+    expect(reloaded!.stats.eva).toBe(8)
   })
 })

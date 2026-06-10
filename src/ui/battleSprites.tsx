@@ -89,6 +89,8 @@ export function BattleSprite({
 /** One enemy in the on-field team: sprite + name/Lv + its own HP bar. Shows a defeated state at
  *  hp≤0, a floating damage number, a current-target highlight, and (when onSelect is given and the
  *  enemy is alive) is clickable to pick it as the step-through target. */
+const PHYS_ICON: Record<string, string> = { slash: '🗡', pierce: '🏹', strike: '🔨', arcane: '✨' }
+
 export function EnemyCard({
   enemy,
   inQuest,
@@ -96,22 +98,28 @@ export function EnemyCard({
   isTarget,
   active,
   onSelect,
+  deepIntel,
 }: {
   enemy: Monster
   inQuest: boolean
-  float?: { amount: number; key: number }
+  float?: { amount: number; key: number; crit?: boolean; weak?: boolean; resist?: boolean; missed?: boolean }
   /** This enemy is the currently selected/auto target (highlighted). */
   isTarget?: boolean
   /** It's this enemy's CTB turn (parity with the party sprite highlight). */
   active?: boolean
   /** Click to target this enemy (only wired during an ally's step-through turn). */
   onSelect?: (id: string) => void
+  /** §25 deep mode: surface weakness/element intel chips. */
+  deepIntel?: boolean
 }) {
   const name = enemy.displayName ?? t(enemy.nameKey)
   const downed = enemy.hp <= 0
   const pct = enemy.maxHp > 0 ? Math.max(0, Math.round((enemy.hp / enemy.maxHp) * 100)) : 0
   const low = pct <= 30
   const clickable = !downed && !!onSelect
+  // §25 蓄力: the NEXT move of the rotation telegraphs — derivable statelessly. Shown in
+  // BOTH modes (an icon-level warning is survival info, not a research decision).
+  const windup = !downed ? enemy.pattern?.[(enemy.patternIdx ?? 0) % (enemy.pattern?.length || 1)]?.telegraph : undefined
   return (
     <div
       className={`enemy-card ${downed ? 'defeated' : ''} ${isTarget ? 'current-target' : ''} ${active ? 'acting' : ''} ${clickable ? 'selectable' : ''}`}
@@ -124,10 +132,36 @@ export function EnemyCard({
         {downed ? '💀' : enemyEmoji(name, inQuest)}
       </div>
       <div className="enemy-card-shadow" aria-hidden />
-      {float && !downed && <div className="float" key={float.key}>-{float.amount}</div>}
+      {float && !downed && (
+        <div className={`float ${float.crit ? 'crit' : ''} ${float.weak ? 'weak' : ''}`} key={float.key}>
+          {float.missed
+            ? '未命中'
+            : `-${float.amount}${float.crit ? ' 会心!' : ''}${float.weak ? ' 拔群!' : float.resist ? ' 不佳…' : ''}`}
+        </div>
+      )}
+      {windup && (
+        <div className="enemy-windup" title={`${name} 正在${windup}——下一击非同小可！`}>
+          ⚡{windup}
+        </div>
+      )}
       <div className="enemy-card-name">
         {name} <span className="enemy-card-lv">Lv.{enemy.level}</span>
       </div>
+      {deepIntel && !downed && (enemy.physWeak?.length || enemy.element) && (
+        <div className="enemy-intel" aria-label="弱点情报">
+          {enemy.element && <span className="intel-chip" title={`五行：${t(`element.${enemy.element}`)}`}>☯{t(`element.${enemy.element}`)}</span>}
+          {enemy.physWeak?.map((k) => (
+            <span key={k} className="intel-chip weak" title={`弱点：${t(`phys.${k}`)}（伤害 ×1.5）`}>
+              {PHYS_ICON[k]}弱{t(`phys.${k}`)}
+            </span>
+          ))}
+          {enemy.physResist?.map((k) => (
+            <span key={`r-${k}`} className="intel-chip resist" title={`抗性：${t(`phys.${k}`)}（伤害 ×0.7）`}>
+              {PHYS_ICON[k]}抗{t(`phys.${k}`)}
+            </span>
+          ))}
+        </div>
+      )}
       <div className="hpbar enemy-card-hp">
         <div className={`hpbar-fill ${low ? 'low' : ''}`} style={{ width: `${pct}%` }} />
         <div className="hpbar-label">{downed ? '已击败' : `${enemy.hp} / ${enemy.maxHp}`}</div>

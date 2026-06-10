@@ -1,5 +1,5 @@
 import { rankForPoints } from '../companion/affinity'
-import { COMPANION_DEFS } from '../companion/roster'
+import { COMPANION_DEFS, profileFor } from '../companion/roster'
 import { allSkillsOf } from '../companion/skills'
 import { xpForLevel } from '../domain/config'
 import type { Stats } from '../domain/types'
@@ -7,20 +7,28 @@ import { effectiveStats } from '../game/effectiveStats'
 import { resourceOf } from '../game/resources'
 import { t } from '../i18n'
 import { useGame } from '../state/gameStore'
+import { isDeepCombat, useSettings } from '../state/settingsStore'
 import { EQUIPMENT_DEFS } from '../world/equipment'
 import { activeSynergiesFor } from '../world/relationships'
 import { FullbodyArt } from './FullbodyArt'
 import { Portrait } from './Portrait'
 
-const STAT_KEYS: (keyof Stats)[] = ['atk', 'def', 'spd', 'mag']
+// §25 layered depth: simple mode keeps the 4 core stats; deep mode shows the full
+// 10-stat sheet + derived 物攻/物防/魔攻/魔防 + element/weapon identity.
+const SIMPLE_KEYS: (keyof Stats)[] = ['str', 'vit', 'spd', 'wis']
+const DEEP_KEYS: (keyof Stats)[] = ['str', 'vit', 'wis', 'spr', 'spd', 'skl', 'hit', 'eva']
 
 /** What each stat actually does in combat — surfaced as hover tooltips so the roles are
  *  discoverable in-game (not just numbers). */
 const STAT_DESC: Record<string, string> = {
-  atk: '攻击 · 完成任务的普攻、以及物理技能伤害的主来源',
-  def: '防御 · 按固定量抵消敌人进攻 / 逾期造成的伤害（硬扛路线）',
+  str: '力量 · 物攻的来源：完成任务的普攻与物理技能伤害',
+  vit: '耐久 · 物防的来源：按固定量抵消敌人的物理伤害（硬扛路线）',
   spd: '速度 · 驱动出手时间线（CTB）：越快越早出手，快得多还能在一回合内套圈多打几次（节奏路线）',
-  mag: '法术 · 治疗量，以及法系攻击技能（如夜星奏）的伤害来源',
+  wis: '智慧 · 魔攻的来源：治疗量与法系技能伤害',
+  spr: '精神 · 魔防的来源：减轻敌人的法术伤害',
+  skl: '技巧 · 暴击率：会心一击的概率',
+  hit: '命中 · 攻击命中目标的概率',
+  eva: '闪避 · 闪开敌人攻击的概率',
   maxHp: '生命 · 能承受的伤害上限',
   maxMp: '魔力 · 施放技能消耗的资源',
 }
@@ -39,8 +47,10 @@ export function CharacterSheet({ characterId, onClose }: { characterId: string; 
   const gs = useGame((s) => s.gameState)
   const characters = useGame((s) => s.characters)
   const affinity = useGame((s) => s.affinities[characterId])
+  const deep = useSettings((s) => isDeepCombat(s.settings))
   const char = characters.find((c) => c.id === characterId)
   if (!gs || !char) return null
+  const STAT_KEYS = deep ? DEEP_KEYS : SIMPLE_KEYS
 
   const res = resourceOf(gs, char)
   const partyCompanionIds = gs.partyIds.filter((id) => {
@@ -70,8 +80,7 @@ export function CharacterSheet({ characterId, onClose }: { characterId: string; 
           <div className="sheet-id">
             <div className="sheet-name">{char.name}</div>
             <div className="sheet-sub">
-              {t(`class.${char.classId}`)} · Lv.{base.level}
-              {char.kind === 'player' ? ' · 旅人' : ''}
+              {profileFor(char).role} · Lv.{base.level}
               {char.brand ? ` · 专属烙印「${char.brand}」` : ''}
             </div>
             {rank && (
@@ -110,6 +119,43 @@ export function CharacterSheet({ characterId, onClose }: { characterId: string; 
             )
           })}
         </div>
+
+        {deep && (
+          <>
+            {/* §25 deep mode: derived combat values + identity badges. */}
+            <div className="sheet-stats" style={{ marginTop: 6 }}>
+              <div className="sheet-stat" title="物攻 = 有效力量（含武器/羁绊）">
+                <span className="sheet-stat-k">{t('derived.patk')}</span>
+                <span className="sheet-stat-v">{eff.str}</span>
+              </div>
+              <div className="sheet-stat" title="物防 = 有效耐久">
+                <span className="sheet-stat-k">{t('derived.pdef')}</span>
+                <span className="sheet-stat-v">{eff.vit}</span>
+              </div>
+              <div className="sheet-stat" title="魔攻 = 有效智慧（治疗与法术同源）">
+                <span className="sheet-stat-k">{t('derived.matk')}</span>
+                <span className="sheet-stat-v">{eff.wis}</span>
+              </div>
+              <div className="sheet-stat" title="魔防 = 有效精神">
+                <span className="sheet-stat-k">{t('derived.mdef')}</span>
+                <span className="sheet-stat-v">{eff.spr}</span>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', margin: '8px 0 0' }}>
+              {profileFor(char).element && (
+                <span className="reward-chip" title="五行属性（克制环：木→土→水→火→金→木）">
+                  ☯ {t(`element.${profileFor(char).element}`)}
+                </span>
+              )}
+              <span className="reward-chip" title="可用武器类别">
+                ⚔{' '}
+                {profileFor(char).weaponKinds === 'all'
+                  ? '全武器（旅人特权）'
+                  : (profileFor(char).weaponKinds as string[]).map((w) => t(`weapon.${w}`)).join('·')}
+              </span>
+            </div>
+          </>
+        )}
 
         {equipped.length > 0 && (
           <>

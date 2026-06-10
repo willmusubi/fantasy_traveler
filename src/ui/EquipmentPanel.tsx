@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { WEAPON_CATEGORY } from '../domain/config'
 import type { Character, Stats } from '../domain/types'
 import { effectiveStats } from '../game/effectiveStats'
 import { t } from '../i18n'
@@ -6,13 +7,17 @@ import { useGame } from '../state/gameStore'
 import { activeSynergiesFor } from '../world/relationships'
 import { EQUIPMENT_DEFS } from '../world/equipment'
 
-const SHOWN: (keyof Stats)[] = ['maxHp', 'maxMp', 'atk', 'def', 'spd', 'mag']
+const SHOWN: (keyof Stats)[] = ['maxHp', 'maxMp', 'str', 'vit', 'wis', 'spr', 'spd', 'skl', 'hit', 'eva']
 
 function bonusText(defId: string): string {
-  const b = EQUIPMENT_DEFS[defId]?.bonus ?? {}
-  return (Object.keys(b) as (keyof typeof b)[])
+  const def = EQUIPMENT_DEFS[defId]
+  const b = def?.bonus ?? {}
+  const stats = (Object.keys(b) as (keyof typeof b)[])
     .map((k) => `${t(`stat.${k}`)}+${b[k]}`)
     .join(' ')
+  const kind = def?.weaponKind ? `【${t(`weapon.${def.weaponKind}`)}·${t(`phys.${WEAPON_CATEGORY[def.weaponKind]}`)}】` : ''
+  const elem = def?.element ? `〔${t(`element.${def.element}`)}〕` : ''
+  return `${kind}${elem}${stats}`
 }
 
 export function EquipmentPanel() {

@@ -35,7 +35,7 @@ beforeEach(async () => {
 
 describe('habit store — daily grant-once + buff offer', () => {
   it('completing offers a buff, bumps the streak, and is per-day grant-once', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     await useHabits.getState().add({ title: '按时起床', schedule: { kind: 'daily' } })
     const id = useHabits.getState().habits[0].id
 
@@ -62,7 +62,7 @@ describe('habit store — daily grant-once + buff offer', () => {
   })
 
   it('a continuous next-day completion increments the streak', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     await habitsRepo.put(seededHabit({ id: 'h-cont', streak: 1, bestStreak: 1, lastCompletedOn: dayKey(-1), rewardedOn: dayKey(-1) }))
     await useHabits.getState().hydrate()
 
@@ -73,7 +73,7 @@ describe('habit store — daily grant-once + buff offer', () => {
   })
 
   it('sweepHabits breaks a missed streak, applies a debuff, and is idempotent', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     await habitsRepo.put(seededHabit({ id: 'h-miss', streak: 3, bestStreak: 3, lastCompletedOn: dayKey(-2), rewardedOn: dayKey(-2) }))
     await useHabits.getState().hydrate()
 
@@ -91,7 +91,7 @@ describe('habit store — daily grant-once + buff offer', () => {
   })
 
   it('bestStreak never decreases when a streak breaks', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     await habitsRepo.put(seededHabit({ id: 'h-best', streak: 5, bestStreak: 5, lastCompletedOn: dayKey(-3), rewardedOn: dayKey(-3) }))
     await useHabits.getState().hydrate()
     await useHabits.getState().sweepHabits()
@@ -111,7 +111,7 @@ describe('habit store — daily grant-once + buff offer', () => {
 
 describe('game store — buff choice', () => {
   it('chooseBuff applies the picked buff (untilVictory) and dequeues it', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     useGame.getState().offerBuffChoice()
     const opt = useGame.getState().pendingBuffChoices[0].options[0]
 
@@ -122,7 +122,7 @@ describe('game store — buff choice', () => {
   })
 
   it('caps simultaneously-active habit buffs (FIFO eviction)', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     for (let i = 0; i < HABIT_BUFF_ACTIVE_CAP + 2; i++) {
       useGame.getState().offerBuffChoice()
       const opt = useGame.getState().pendingBuffChoices[0].options[0]

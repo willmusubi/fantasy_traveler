@@ -64,7 +64,7 @@ describe('threadIdFor — target → persistent thread', () => {
 
 describe('setTarget — switching loads that thread', () => {
   it('loads the selected companion’s own message history', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     await chatRepo.putMessage(mkMsg({ id: 'v1', threadId: 'solo-vela', sender: 'player', text: '嗨薇拉', createdAt: '2026-01-01T00:00:00.000Z' }))
     await chatRepo.putMessage(mkMsg({ id: 'v2', threadId: 'solo-vela', sender: 'vela', text: '你好，旅人', createdAt: '2026-01-01T00:00:01.000Z' }))
 
@@ -77,7 +77,7 @@ describe('setTarget — switching loads that thread', () => {
 
 describe('send — solo (1-on-1)', () => {
   it('appends the user line + one bot reply and persists under the companion’s thread', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard') // primary = mira, target defaults to solo-primary
+    await useGame.getState().seedNewGame('阿旅') // primary = mira, target defaults to solo-primary
     mockChat.mockResolvedValue({ reply: '嗨，我在的！', expression: 'smile' })
 
     await useChat.getState().send('在吗')
@@ -96,7 +96,7 @@ describe('send — solo (1-on-1)', () => {
 
 describe('send — group (队伍群聊)', () => {
   it('every party companion replies once, in party order, each seeing the prior replies', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard') // mira in party
+    await useGame.getState().seedNewGame('阿旅') // mira in party
     addPartyCompanions(['vela', 'nova']) // party companions: mira, vela, nova
     let n = 0
     mockChat.mockImplementation(async () => {
@@ -120,7 +120,7 @@ describe('send — group (队伍群聊)', () => {
   })
 
   it('a missing API key surfaces ONE error and stops the round (no fallback spam)', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     addPartyCompanions(['vela', 'nova']) // 3 party companions
     mockChat.mockRejectedValue(new AIError('no-key', '尚未设置 API Key'))
 

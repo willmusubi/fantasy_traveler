@@ -21,12 +21,12 @@ beforeEach(async () => {
 
 describe('victory settlement', () => {
   it('is set when an enemy is defeated, with the enemy-scaled reward as the headline', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     expect(useGame.getState().victorySummary).toBeNull()
 
-    // Hammer the training monster until it falls.
+    // Hammer the training monster until it falls (§25 profiles: ~52 dmg/round vs 900 HP → ~18 rounds).
     let guard = 0
-    while (!useGame.getState().victorySummary && guard < 20) {
+    while (!useGame.getState().victorySummary && guard < 30) {
       await useTodos.getState().add({ title: `t${guard}`, priority: 'high' })
       await useTodos.getState().complete(useTodos.getState().todos.find((t) => t.status === 'open')!.id)
       guard++
@@ -40,7 +40,7 @@ describe('victory settlement', () => {
   })
 
   it('does NOT set a settlement on a non-killing blow', async () => {
-    await useGame.getState().seedNewGame('阿旅', 'vanguard')
+    await useGame.getState().seedNewGame('阿旅')
     await useTodos.getState().add({ title: '一击', priority: 'low' }) // tiny damage, enemy survives
     await useTodos.getState().complete(useTodos.getState().todos[0].id)
     expect(useGame.getState().victorySummary).toBeNull()
