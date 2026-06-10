@@ -116,8 +116,8 @@ describe('§25 true miss / crit through the live round', () => {
   })
 
   it('weakness tags multiply damage and stamp typeMult (效果拔群)', () => {
-    // Traveler default weapon = sword (slash). Enemy weak to slash → ×1.5.
-    const weak = makeMonster({ physWeak: ['slash'] })
+    // Traveler default weapon = sword (pierce 刺). Enemy weak to pierce → ×1.5.
+    const weak = makeMonster({ physWeak: ['pierce'] })
     const r = gameReducer(makeInput([PLAYER], { enemies: [weak] }), todo('low'))
     const dmg = r.effects.find((e) => e.type === 'damage')
     // raw 14×1 − 5 = 9 → ×1.5 = 13.5 → 14 (mid variance)

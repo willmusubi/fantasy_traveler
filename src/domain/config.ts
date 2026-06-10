@@ -213,10 +213,11 @@ export const AFFINITY_THRESHOLDS = {
 
 // ---------- §25 weapons & elements (static data) ----------
 
-/** Weapon kind → physical damage category. Arcane weapons swing with matk. */
+/** Weapon kind → physical damage category. Arcane weapons swing with matk.
+ *  Convention: 匕首 (daggers) are authored as `sword` → 刺. */
 export const WEAPON_CATEGORY: Record<WeaponKind, PhysKind> = {
-  sword: 'slash', katana: 'slash', axe: 'slash',
-  spear: 'pierce', halberd: 'pierce', bow: 'pierce',
+  katana: 'slash', axe: 'slash', halberd: 'slash',
+  sword: 'pierce', spear: 'pierce', bow: 'pierce',
   fist: 'strike', hammer: 'strike', club: 'strike',
   rod: 'arcane', fan: 'arcane', qin: 'arcane',
 }

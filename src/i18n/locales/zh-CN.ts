@@ -67,7 +67,7 @@ export const zhCN: Record<string, string> = {
 
   // Physical damage categories + elements (§25)
   'phys.slash': '斩',
-  'phys.pierce': '突',
+  'phys.pierce': '刺',
   'phys.strike': '打',
   'phys.arcane': '法',
   'element.metal': '金',

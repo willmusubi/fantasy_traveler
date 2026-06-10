@@ -14,7 +14,7 @@ export interface EquipmentDef {
   worldId?: WorldId
   /** Flat additive stat bonuses. A weapon's +str IS its attack power (§25). */
   bonus: Partial<Omit<Stats, 'level' | 'xp'>>
-  /** §25 — weapons only: one of the 12 kinds; the physical category (斩/突/打/法)
+  /** §25 — weapons only: one of the 12 kinds; the physical category (斩/刺/打/法)
    *  derives via WEAPON_CATEGORY. Absent → the wielder's profile default. */
   weaponKind?: WeaponKind
   /** §25 — optional 五行 carried by the weapon (overrides the wielder's innate). */
@@ -26,7 +26,7 @@ export interface EquipmentDef {
 const DEFAULT_EQUIPMENT_DEFS: Record<string, EquipmentDef> = {
   practice_dagger: {
     id: 'practice_dagger', nameKey: 'equip.practice_dagger', slot: 'weapon',
-    bonus: { str: 2 }, weaponKind: 'katana', price: 30,
+    bonus: { str: 2 }, weaponKind: 'sword', price: 30, // 匕首默认归剑 → 刺
   },
   starlit_blade: {
     id: 'starlit_blade', nameKey: 'equip.starlit_blade', slot: 'weapon', worldId: 'stargazers',

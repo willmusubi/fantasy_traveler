@@ -24,13 +24,14 @@ export type SkillId = string // skill ids = nameKey suffix, e.g. "liuguang"
 /** 五行 — pure mechanics, never surfaced in story copy. 相克环: 木→土→水→火→金→木. */
 export type Element = 'metal' | 'wood' | 'water' | 'fire' | 'earth'
 
-/** Physical damage category (斩/突/打) + arcane (法 — basic attacks scale off matk). */
+/** Physical damage category (斩/刺/打) + arcane (法 — basic attacks scale off matk). */
 export type PhysKind = 'slash' | 'pierce' | 'strike' | 'arcane'
 
-/** The 12 weapon kinds. Category derives via WEAPON_CATEGORY (config). */
+/** The 12 weapon kinds. Category derives via WEAPON_CATEGORY (config).
+ *  匕首 (daggers) are authored as `sword` by convention. */
 export type WeaponKind =
-  | 'sword' | 'katana' | 'axe' // 剑 刀 斧 → slash 斩
-  | 'spear' | 'halberd' | 'bow' // 枪 戟 弓 → pierce 突
+  | 'sword' | 'katana' | 'axe' // 剑→pierce 刺；刀 斧→slash 斩
+  | 'spear' | 'halberd' | 'bow' // 枪 弓→pierce 刺；戟→slash 斩
   | 'fist' | 'hammer' | 'club' // 拳 锤 棍 → strike 打
   | 'rod' | 'fan' | 'qin' // 杖 扇 琴 → arcane 法
 
