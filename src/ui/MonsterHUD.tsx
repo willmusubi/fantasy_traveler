@@ -10,7 +10,7 @@ import { isDeepCombat, useSettings } from '../state/settingsStore'
 import { useQuest } from '../state/questStore'
 import { activeSynergiesFor } from '../world/relationships'
 import { FIRST_WORLD_ID, scriptDefFor, WORLD_DEFS } from '../world/worlds'
-import { BattleSprite, CLASS_EMOJI, EnemyCard, enemyEmoji } from './battleSprites'
+import { BattleSprite, EnemyCard, enemyEmoji, TurnFace } from './battleSprites'
 import { DefaultActionsModal } from './DefaultActionsModal'
 import { BattleCanvas } from './fx/BattleCanvas'
 import { TurnPicker } from './TurnPicker'
@@ -107,7 +107,9 @@ export function MonsterHUD() {
   const planLabel = (c: Character): string => {
     const id = gs.roundPlan[c.id]
     const def = id ? SKILL_DEFS[id] : undefined
-    return def ? t(def.nameKey) : '⚔ 普攻'
+    // Plain text — the ⚔ glyph renders as a garbled "×" in the pixel font; skill names carry
+    // no icon either, so the fallback shouldn't.
+    return def ? t(def.nameKey) : '普攻'
   }
 
   return (
@@ -123,9 +125,9 @@ export function MonsterHUD() {
         <BattleCanvas /> {/* §27 FX overlay — particles/shake/SFX, above the DOM sprites */}
 
         <div className="party-side">
-          {player && <BattleSprite char={player} isPlayer res={resourceOf(gs, player)} charge={gs.charge[player.id] ?? 0} plan={gs.activeRound ? undefined : planLabel(player)} active={activeId === player.id} statuses={gs.activeStatuses?.[player.id]} />}
+          {player && <BattleSprite char={player} isPlayer res={resourceOf(gs, player)} charge={gs.charge[player.id] ?? 0} plan={gs.activeRound ? undefined : planLabel(player)} active={activeId === player.id} statuses={gs.activeStatuses?.[player.id]} deep={deep} />}
           {partyCompanions.map((c) => (
-            <BattleSprite key={c.id} char={c} isPlayer={false} res={resourceOf(gs, c)} charge={gs.charge[c.id] ?? 0} plan={gs.activeRound ? undefined : planLabel(c)} active={activeId === c.id} statuses={gs.activeStatuses?.[c.id]} />
+            <BattleSprite key={c.id} char={c} isPlayer={false} res={resourceOf(gs, c)} charge={gs.charge[c.id] ?? 0} plan={gs.activeRound ? undefined : planLabel(c)} active={activeId === c.id} statuses={gs.activeStatuses?.[c.id]} deep={deep} />
           ))}
         </div>
 
@@ -140,6 +142,7 @@ export function MonsterHUD() {
               active={m.id === activeEnemyId}
               onSelect={allyDeciding ? setCombatTarget : undefined}
               deepIntel={deep}
+              reserveIntel={enemies.length > 1}
               statuses={gs.activeStatuses?.[m.id]}
             />
           ))}
@@ -159,14 +162,18 @@ export function MonsterHUD() {
           const current = idx === 0
           const firstOfNext = idx === nextRoundStart
           const enemyName = enemyUnit ? enemyNameOf(enemyUnit) : primaryName
-          const emoji = isEnemy ? enemyEmoji(enemyName, inQuest) : c?.kind === 'player' ? CLASS_EMOJI[c.classId] ?? '⚔️' : '🙂'
           const name = isEnemy ? enemyName : c?.name ?? ''
           return (
             <Fragment key={idx}>
               {firstOfNext && <span className="turn-round-sep" aria-hidden>┊ 下一回合</span>}
               {idx > 0 && !firstOfNext && <span className="turn-arrow" aria-hidden>›</span>}
               <span className={`turn-chip ${isEnemy ? 'enemy' : 'ally'} ${lap ? 'lap' : ''} ${current ? 'current' : ''} ${round === 1 ? 'next-round' : ''}`} title={current ? `${name}（轮到出手）` : lap ? `${name}（连击）` : name}>
-                <span className="turn-emoji" aria-hidden>{emoji}</span>
+                {current && <span className="turn-now" aria-hidden>▶</span>}
+                {!isEnemy && c ? (
+                  <TurnFace char={c} />
+                ) : (
+                  <span className="turn-emoji" aria-hidden>{isEnemy ? enemyEmoji(enemyName, inQuest) : '🙂'}</span>
+                )}
                 <span className="turn-cname">{name}{lap ? ' ·连击' : ''}</span>
               </span>
             </Fragment>
@@ -176,6 +183,7 @@ export function MonsterHUD() {
 
       {gs.partyBuffs.length > 0 && (
         <div className="buff-band" aria-label="增益与减益">
+          <span className="buff-band-label" aria-hidden>全队 ▸</span>
           {gs.partyBuffs.map((b) => {
             const debuff = b.magnitude < 0
             const pct = Math.round(Math.abs(b.magnitude) * 100)
@@ -197,7 +205,9 @@ export function MonsterHUD() {
           {enemies.length > 1 && <span className="boss-lv">{livingEnemies(enemies).length}/{enemies.length} 存活</span>}
         </div>
         {activeQuest ? (
-          <div className="boss-hint">完成一个任务，按出手顺序逐个角色选择行动；点击敌人可切换目标（技能消耗 MP）</div>
+          // The how-to line teaches the core loop — simple mode keeps it; deep-mode players
+          // opted into the mechanics and get the row back for the battle itself.
+          !deep && <div className="boss-hint">完成一个任务，按出手顺序逐个角色选择行动；点击敌人可切换目标（技能消耗 MP）</div>
         ) : (
           <div className="stage-cta-wrap">
             <span className="stage-cta-hint">

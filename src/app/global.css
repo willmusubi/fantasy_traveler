@@ -347,8 +347,10 @@ input, select, textarea { font-family: inherit; }
     radial-gradient(1.5px 1.5px at 40% 14%, rgba(255, 255, 255, 0.45), transparent),
     radial-gradient(1px 1px at 58% 26%, rgba(255, 255, 255, 0.5), transparent),
     radial-gradient(1px 1px at 30% 34%, rgba(255, 255, 255, 0.4), transparent),
-    radial-gradient(circle 24px at 82% 30%, #f6efd2 0%, #f6efd2 96%, transparent 100%),
-    radial-gradient(150px 110px at 82% 30%, rgba(246, 239, 210, 0.22), transparent 70%),
+    /* Moon sits in the EMPTY middle sky — at 82% it stood directly behind the rightmost
+       enemy and read as a mystery "spotlight/selection" halo. */
+    radial-gradient(circle 24px at 52% 20%, #f6efd2 0%, #f6efd2 96%, transparent 100%),
+    radial-gradient(150px 110px at 52% 20%, rgba(246, 239, 210, 0.22), transparent 70%),
     linear-gradient(180deg, #1d1748 0%, #392a63 48%, #6a4570 78%, #864e6a 100%);
 }
 .stage-ground {
@@ -395,7 +397,9 @@ input, select, textarea { font-family: inherit; }
 .enemy-card { position: relative; width: 98px; text-align: center; animation: bob 2.8s ease-in-out infinite; }
 .enemy-card:nth-child(2) { animation-delay: 0.5s; }
 .enemy-card:nth-child(3) { animation-delay: 1s; }
-.enemy-card-sprite { font-size: 70px; line-height: 1; filter: drop-shadow(0 5px 0 rgba(0, 0, 0, 0.45)); }
+/* Fixed-height, bottom-anchored sprite box: emoji glyphs vary wildly in height, which used to
+   push each card's name/HP stack to a different baseline. */
+.enemy-card-sprite { font-size: 70px; line-height: 1; height: 72px; display: flex; align-items: flex-end; justify-content: center; filter: drop-shadow(0 5px 0 rgba(0, 0, 0, 0.45)); }
 .enemy-card-sprite.low { animation: hurt 1.6s steps(2) infinite; }
 .enemy-card-shadow { width: 60px; height: 12px; margin: 1px auto 4px; border-radius: 50%; background: radial-gradient(ellipse, rgba(0, 0, 0, 0.5), transparent 70%); }
 .enemy-card-name { font-family: var(--font-pixel); font-size: 10px; color: var(--ink); text-shadow: 1px 1px 0 var(--outline); white-space: nowrap; margin-bottom: 4px; }
@@ -405,10 +409,12 @@ input, select, textarea { font-family: inherit; }
 .enemy-card.defeated { opacity: 0.45; filter: grayscale(0.8); animation: none; }
 .enemy-card.acting { filter: drop-shadow(0 0 8px rgba(244, 198, 78, 0.85)); }
 .enemy-card.acting .enemy-card-name { color: var(--gold); }
-.enemy-card.selectable { cursor: pointer; }
-.enemy-card.selectable:hover { filter: brightness(1.08); }
-.enemy-card.current-target { outline: 2px solid var(--gold); outline-offset: 3px; border-radius: 8px; }
-.enemy-card.current-target .enemy-card-name { color: var(--gold); }
+/* Targeting language is RED (lock-on crosshair); gold stays reserved for "acting now".
+   selectable = a faint standing dashed frame so "you can click these" is discoverable. */
+.enemy-card.selectable { cursor: crosshair; outline: 1px dashed rgba(246, 239, 210, 0.4); outline-offset: 3px; border-radius: 8px; }
+.enemy-card.selectable:hover { filter: brightness(1.15); outline-color: #ff8a76; }
+.enemy-card.current-target { outline: 2px dashed #ff6a55; outline-offset: 3px; border-radius: 8px; }
+.enemy-card.current-target .enemy-card-name { color: #ff8a76; }
 
 .bsprite { width: 80px; text-align: center; animation: bob 3.4s ease-in-out infinite; }
 .bsprite:nth-child(2) { animation-delay: 0.6s; }
@@ -418,7 +424,7 @@ input, select, textarea { font-family: inherit; }
 .bsprite-body.has-art { line-height: 0; filter: none; }
 .bsprite-art { width: 62px; height: 62px; object-fit: cover; border-radius: 9px; border: 2px solid var(--frame-gold); background: var(--win-sunken); box-shadow: 0 0 0 2px var(--outline), inset 0 0 0 1px rgba(255, 255, 255, 0.15); }
 /* Planned-action badge above the sprite (Octopath "command over the head"). */
-.bsprite-action { display: inline-block; max-width: 64px; margin-bottom: 3px; padding: 1px 5px; font-family: var(--font-pixel); font-size: 8px; color: var(--gold); background: linear-gradient(180deg, rgba(244, 198, 78, 0.22), rgba(199, 154, 53, 0.22)); border: 1px solid rgba(244, 198, 78, 0.5); border-radius: 999px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 1px 1px 0 var(--outline); }
+.bsprite-action { display: inline-block; max-width: 78px; margin-bottom: 3px; padding: 1px 5px; font-family: var(--font-pixel); font-size: 8px; color: var(--gold); background: linear-gradient(180deg, rgba(244, 198, 78, 0.22), rgba(199, 154, 53, 0.22)); border: 1px solid rgba(244, 198, 78, 0.5); border-radius: 999px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-shadow: 1px 1px 0 var(--outline); }
 .bsprite-shadow { width: 50px; height: 10px; margin: 0 auto; border-radius: 50%; background: radial-gradient(ellipse, rgba(0, 0, 0, 0.45), transparent 70%); }
 .bsprite-name { font-family: var(--font-pixel); font-size: 10px; color: var(--ink); margin-top: 5px; text-shadow: 1px 1px 0 var(--outline); white-space: nowrap; }
 .bsprite-lv { color: var(--gold); }
@@ -429,6 +435,8 @@ input, select, textarea { font-family: inherit; }
 .mini-bar.hp .mini-fill { background: var(--hp); }
 .mini-bar.mp .mini-fill { background: var(--mp); }
 .mini-bar.ct .mini-fill { background: linear-gradient(90deg, var(--frame-gold), var(--gold)); } /* CTB charge gauge */
+/* Deep mode: exact HP under the bars — the bars alone are glanceable but not readable. */
+.bsprite-hp-label { font-family: var(--font-pixel); font-size: 8px; color: var(--ink-dim); text-align: center; margin-top: 2px; line-height: 1; }
 
 /* ---------- Skill bar (cast active skills, gated by MP) ---------- */
 .skill-bar { display: flex; flex-wrap: wrap; gap: 7px; padding: 0 17px 16px; }
@@ -587,8 +595,11 @@ input, select, textarea { font-family: inherit; }
 .turn-chip { display: inline-flex; align-items: center; gap: 5px; padding: 3px 9px 3px 7px; border-radius: 999px; border: 1px solid rgba(241, 231, 198, 0.16); background: rgba(74, 92, 171, 0.32); }
 .turn-chip.enemy { background: linear-gradient(180deg, rgba(239, 90, 76, 0.28), rgba(120, 30, 30, 0.28)); border-color: rgba(239, 90, 76, 0.5); }
 .turn-chip.lap { border-color: var(--gold); box-shadow: 0 0 0 1px rgba(244, 198, 78, 0.45); }
-.turn-chip.current { border-color: var(--gold); background: linear-gradient(180deg, rgba(244, 198, 78, 0.34), rgba(199, 154, 53, 0.34)); box-shadow: 0 0 0 2px rgba(244, 198, 78, 0.5); } /* whose turn it is */
+.turn-chip.current { border-color: var(--gold); background: linear-gradient(180deg, rgba(244, 198, 78, 0.34), rgba(199, 154, 53, 0.34)); box-shadow: 0 0 0 2px rgba(244, 198, 78, 0.5); transform: scale(1.07); } /* whose turn it is — scaled + ▶ so it pops out of the row */
+.turn-now { font-size: 8px; color: var(--gold); text-shadow: 1px 1px 0 var(--outline); }
 .turn-emoji { font-size: 14px; line-height: 1; }
+/* Mini head-crop in the chip — same art chain as the stage sprite, so chip ↔ sprite match. */
+.turn-face { width: 16px; height: 16px; flex: 0 0 auto; border-radius: 50%; object-fit: cover; border: 1px solid var(--frame-gold); background: var(--win-sunken); }
 .turn-cname { font-size: 11px; color: var(--ink); }
 .turn-chip.lap .turn-cname { color: var(--gold); }
 .turn-round-sep { font-family: var(--font-pixel); font-size: 10px; color: var(--ink-dim); margin: 0 3px; opacity: 0.85; }
@@ -631,7 +642,9 @@ input, select, textarea { font-family: inherit; }
 }
 /* §25 hit feedback: 会心一击 pops bigger+red-hot; 效果拔群 glows. */
 .float.crit { font-size: 32px; color: #ff7a4d; animation: floatUp 1.25s ease-out forwards; }
-.float.weak { color: #ffd84d; text-shadow: 2px 2px 0 var(--outline), 0 0 10px rgba(255, 216, 77, 0.6); }
+/* Weakness language is ORANGE-RED (same family as crit, sized between normal 26 and crit 32) —
+   gold is the global "buff/good" color and made 拔群 read like a buff badge. */
+.float.weak { color: #ff9060; font-size: 30px; text-shadow: 2px 2px 0 var(--outline), 0 0 10px rgba(255, 140, 70, 0.55); }
 
 /* §25 enemy intel (deep mode) + 蓄力 windup warning (both modes). */
 .enemy-windup {
@@ -642,13 +655,17 @@ input, select, textarea { font-family: inherit; }
   animation: windupPulse 0.9s ease-in-out infinite alternate;
 }
 @keyframes windupPulse { from { transform: scale(1); } to { transform: scale(1.12); } }
-.enemy-intel { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; margin-top: 3px; }
+.enemy-intel { display: flex; gap: 4px; flex-wrap: wrap; justify-content: center; align-content: flex-start; margin-top: 3px; }
+/* Multi-enemy teams reserve TWO chip rows (2×16px + 4px gap) so cards with 0/1/2 rows of intel
+   keep their name/HP stacks on the same baseline; solo enemies skip the dead air. */
+.enemy-intel.reserve { min-height: 36px; }
 .intel-chip {
-  font-size: 10px; line-height: 1; padding: 3px 5px; border-radius: 5px;
+  font-size: 10px; line-height: 1; padding: 2px 4px; border-radius: 5px;
   border: 1px solid var(--frame); background: rgba(10, 14, 40, 0.7); color: var(--ink-dim);
 }
-.intel-chip.weak { border-color: #ffd84d; color: #ffd84d; }
-.intel-chip.resist { border-color: #7f8bd6; color: #9aa4e0; }
+/* Weakness = orange-red "hit here!" (crit family); resistance = muted cool, visually receding. */
+.intel-chip.weak { border-color: #ff7a4d; color: #ff9060; text-shadow: 0 0 6px rgba(255, 120, 60, 0.4); }
+.intel-chip.resist { border-color: rgba(106, 122, 176, 0.45); color: rgba(154, 164, 224, 0.72); }
 @keyframes floatUp { 0% { opacity: 0; transform: translate(-50%, 10px); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -46px); } }
 
 /* §26 status chips — small icon+roundsLeft badge row on battle sprites and enemy cards. */
@@ -1078,7 +1095,8 @@ input, select, textarea { font-family: inherit; }
 .habit-edit-actions { display: flex; gap: 9px; }
 
 /* ---------- Party buffs / debuffs ---------- */
-.buff-band { display: flex; flex-wrap: wrap; gap: 7px; margin: 10px 17px 2px; }
+.buff-band { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin: 10px 17px 2px; }
+.buff-band-label { font-family: var(--font-pixel); font-size: 10px; color: var(--ink-dim); text-shadow: 1px 1px 0 var(--outline); }
 .buff-badge {
   font-family: var(--font-pixel); font-size: 10px; color: var(--gold);
   border: 2px solid var(--frame-gold); border-radius: 999px; padding: 3px 9px;
@@ -1141,7 +1159,7 @@ input, select, textarea { font-family: inherit; }
   .bsprite-body { font-size: 34px; }
   .enemy-side { gap: 7px; right: 9%; }
   .enemy-card { width: 70px; }
-  .enemy-card-sprite { font-size: 46px; }
+  .enemy-card-sprite { font-size: 46px; height: 48px; }
   .enemy-card-name { font-size: 9px; }
   /* Touch targets ≥44px for the cramped nav rows on phones. */
   .tabbar button, .zone-switch button { min-height: 44px; display: inline-flex; align-items: center; justify-content: center; }

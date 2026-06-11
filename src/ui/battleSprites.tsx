@@ -24,12 +24,31 @@ export function enemyEmoji(name: string, inQuest: boolean): string {
   return inQuest ? '🎭' : '👹'
 }
 
-export function MiniBar({ value, max, cls }: { value: number; max: number; cls: string }) {
+export function MiniBar({ value, max, cls, title }: { value: number; max: number; cls: string; title?: string }) {
   const pct = max > 0 ? Math.max(0, Math.min(100, (value / max) * 100)) : 0
   return (
-    <div className={`mini-bar ${cls}`}>
+    <div className={`mini-bar ${cls}`} title={title}>
       <div className="mini-fill" style={{ width: `${pct}%` }} />
     </div>
+  )
+}
+
+/** Tiny round face for turn-order chips: the head-crop art, falling back to the same emoji the
+ *  stage sprite uses — so the chip and the sprite always read as the same character. */
+export function TurnFace({ char }: { char: Character }) {
+  const [failed, setFailed] = useState(false)
+  const fallback = char.kind === 'player' ? CLASS_EMOJI[char.classId] ?? '⚔️' : '🙂'
+  if (failed) return <span className="turn-emoji" aria-hidden>{fallback}</span>
+  return (
+    <img
+      className="turn-face"
+      src={`/portraits/heads/${char.portraitSet}.png`}
+      alt=""
+      aria-hidden
+      draggable={false}
+      loading="lazy"
+      onError={() => setFailed(true)}
+    />
   )
 }
 
@@ -41,6 +60,7 @@ export function BattleSprite({
   plan,
   active,
   statuses,
+  deep,
 }: {
   char: Character
   isPlayer: boolean
@@ -51,6 +71,8 @@ export function BattleSprite({
   active?: boolean
   /** Active status effects on this character. */
   statuses?: CombatStatus[]
+  /** Deep combat mode: show the inline HP numbers under the bars. */
+  deep?: boolean
 }) {
   const downed = res.hp <= 0
   const emoji = downed ? '💫' : isPlayer ? CLASS_EMOJI[char.classId] ?? '⚔️' : '🙂'
@@ -77,15 +99,20 @@ export function BattleSprite({
       ) : (
         <div className="bsprite-body" aria-hidden>{emoji}</div>
       )}
-      <div className="bsprite-shadow" aria-hidden />
+      {/* The ground-contact shadow only makes sense under a free-standing emoji; the framed
+          art token is a floating card, so it carries no shadow. */}
+      {!artSrc && <div className="bsprite-shadow" aria-hidden />}
       <div className="bsprite-name">
         {char.name} <span className="bsprite-lv">Lv.{char.stats.level}</span>
       </div>
       <div className="bsprite-bars">
-        <MiniBar value={res.hp} max={char.stats.maxHp} cls="hp" />
-        <MiniBar value={res.mp} max={char.stats.maxMp} cls="mp" />
-        <MiniBar value={Math.min(charge, 100)} max={100} cls="ct" />
+        <MiniBar value={res.hp} max={char.stats.maxHp} cls="hp" title={`HP ${res.hp}/${char.stats.maxHp}`} />
+        <MiniBar value={res.mp} max={char.stats.maxMp} cls="mp" title={`MP ${res.mp}/${char.stats.maxMp}`} />
+        <MiniBar value={Math.min(charge, 100)} max={100} cls="ct" title={`充能 ${Math.round(Math.min(charge, 100))}%（满 100% 本回合连击）`} />
       </div>
+      {deep && !downed && (
+        <div className="bsprite-hp-label" aria-hidden>{res.hp}/{char.stats.maxHp}</div>
+      )}
       {statuses && statuses.length > 0 && (
         <div className="status-chip-row" aria-label="状态">
           {statuses.map((s) => {
@@ -120,6 +147,7 @@ export function EnemyCard({
   active,
   onSelect,
   deepIntel,
+  reserveIntel,
   statuses,
 }: {
   enemy: Monster
@@ -133,6 +161,9 @@ export function EnemyCard({
   onSelect?: (id: string) => void
   /** §25 deep mode: surface weakness/element intel chips. */
   deepIntel?: boolean
+  /** Reserve the two-row intel slot even when this enemy has no chips — keeps baselines level
+   *  across a multi-enemy team. Solo enemies skip the reservation (nothing to align with). */
+  reserveIntel?: boolean
   /** Active status effects on this enemy. */
   statuses?: CombatStatus[]
 }) {
@@ -172,17 +203,19 @@ export function EnemyCard({
       <div className="enemy-card-name">
         {name} <span className="enemy-card-lv">Lv.{enemy.level}</span>
       </div>
-      {deepIntel && !downed && (enemy.physWeak?.length || enemy.element) && (
-        <div className="enemy-intel" aria-label="弱点情报">
+      {/* Rendered (possibly empty) for EVERY living enemy in a multi-enemy team in deep mode,
+          so the reserved min-height keeps name/HP rows on one baseline across cards. */}
+      {deepIntel && !downed && (reserveIntel || enemy.physWeak?.length || enemy.element) && (
+        <div className={`enemy-intel ${reserveIntel ? 'reserve' : ''}`} aria-label="弱点情报">
           {enemy.element && <span className="intel-chip" title={`五行：${t(`element.${enemy.element}`)}`}>☯{t(`element.${enemy.element}`)}</span>}
           {enemy.physWeak?.map((k) => (
-            <span key={k} className="intel-chip weak" title={`弱点：${t(`phys.${k}`)}（伤害 ×1.5）`}>
-              {PHYS_ICON[k]}弱{t(`phys.${k}`)}
+            <span key={k} className="intel-chip weak" title={`弱点：${t(`phys.${k}`)}（伤害 ×1.5，打这里！）`}>
+              ▲{PHYS_ICON[k]}弱{t(`phys.${k}`)}
             </span>
           ))}
           {enemy.physResist?.map((k) => (
             <span key={`r-${k}`} className="intel-chip resist" title={`抗性：${t(`phys.${k}`)}（伤害 ×0.7）`}>
-              {PHYS_ICON[k]}抗{t(`phys.${k}`)}
+              ▼{PHYS_ICON[k]}抗{t(`phys.${k}`)}
             </span>
           ))}
         </div>
