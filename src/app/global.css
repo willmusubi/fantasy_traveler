@@ -406,6 +406,14 @@ input, select, textarea { font-family: inherit; }
 .stage-scene.scene-on .bsprite-shadow,
 .stage-scene.scene-on .enemy-card-sprite,
 .stage-scene.scene-on .enemy-card-shadow { visibility: hidden; }
+/* Octopath diagonal depth (per the user's reference): the slot nearest the center line is
+   the FRONT row (lowest), ranks behind step up. Staggering the DOM cards moves the anchors,
+   so the canvas figures follow for free. */
+.stage-scene.scene-on .party-side .bsprite:nth-child(1) { margin-bottom: 26px; }
+.stage-scene.scene-on .party-side .bsprite:nth-child(2) { margin-bottom: 17px; }
+.stage-scene.scene-on .party-side .bsprite:nth-child(3) { margin-bottom: 8px; }
+.stage-scene.scene-on .enemy-side .enemy-card:nth-child(2) { margin-bottom: 14px; }
+.stage-scene.scene-on .enemy-side .enemy-card:nth-child(3) { margin-bottom: 26px; }
 
 @media (prefers-reduced-motion: reduce) {
   .battle-canvas { display: none; }
@@ -660,15 +668,17 @@ input, select, textarea { font-family: inherit; }
 @keyframes shine { 0% { transform: translateX(-100%); } 55%, 100% { transform: translateX(240%); } }
 .hpbar-label { position: absolute; inset: 0; display: grid; place-items: center; font-size: 11px; font-family: var(--font-pixel); text-shadow: 1px 1px 0 var(--outline); z-index: 1; }
 .float {
-  position: absolute; left: 50%; top: -8px; transform: translateX(-50%); white-space: nowrap;
-  font-family: var(--font-pixel); font-size: 26px; color: var(--gold); pointer-events: none; z-index: 3;
-  text-shadow: 2px 2px 0 var(--outline); animation: floatUp 1.05s ease-out forwards;
+  position: absolute; left: 50%; top: -8px; transform: translateX(-50%) skewX(-6deg); white-space: nowrap;
+  font-family: var(--font-pixel); font-size: 30px; color: var(--gold); pointer-events: none; z-index: 3;
+  letter-spacing: 1px;
+  text-shadow: 2px 2px 0 var(--outline), -1px -1px 0 var(--outline), 0 3px 10px rgba(0, 0, 0, 0.55);
+  animation: floatUp 1.05s ease-out forwards;
 }
-/* §25 hit feedback: 会心一击 pops bigger+red-hot; 效果拔群 glows. */
-.float.crit { font-size: 32px; color: #ff7a4d; animation: floatUp 1.25s ease-out forwards; }
+/* §25 hit feedback: 会心一击 pops bigger+red-hot; 效果拔群 glows. (§32: Octopath-scale italics.) */
+.float.crit { font-size: 40px; color: #ff7a4d; animation: floatUp 1.25s ease-out forwards; }
 /* Weakness language is ORANGE-RED (same family as crit, sized between normal 26 and crit 32) —
    gold is the global "buff/good" color and made 拔群 read like a buff badge. */
-.float.weak { color: #ff9060; font-size: 30px; text-shadow: 2px 2px 0 var(--outline), 0 0 10px rgba(255, 140, 70, 0.55); }
+.float.weak { color: #ff9060; font-size: 35px; text-shadow: 2px 2px 0 var(--outline), 0 0 10px rgba(255, 140, 70, 0.55); }
 
 /* §25 enemy intel (deep mode) + 蓄力 windup warning (both modes). */
 .enemy-windup {
@@ -690,7 +700,7 @@ input, select, textarea { font-family: inherit; }
 /* Weakness = orange-red "hit here!" (crit family); resistance = muted cool, visually receding. */
 .intel-chip.weak { border-color: #ff7a4d; color: #ff9060; text-shadow: 0 0 6px rgba(255, 120, 60, 0.4); }
 .intel-chip.resist { border-color: rgba(106, 122, 176, 0.45); color: rgba(154, 164, 224, 0.72); }
-@keyframes floatUp { 0% { opacity: 0; transform: translate(-50%, 10px); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -46px); } }
+@keyframes floatUp { 0% { opacity: 0; transform: translate(-50%, 10px) skewX(-6deg); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -46px) skewX(-6deg); } }
 
 /* §26 status chips — small icon+roundsLeft badge row on battle sprites and enemy cards. */
 .status-chip-row { display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; margin-top: 3px; }

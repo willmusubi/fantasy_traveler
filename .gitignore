@@ -31,6 +31,9 @@ coverage
 .impeccable.md
 docs/specs/
 
+# --- Competition campaign, channel strategy & video creation materials (local only) ---
+docs/competition/
+
 # --- Character assets: bring your own (see public/portraits/README.md). The shipped cast
 #     (米拉 / 薇拉 / 诺娃) is an ORIGINAL placeholder; portrait / art files are generated
 #     locally and never committed, to keep the repo lean and IP-free. ---

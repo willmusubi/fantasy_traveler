@@ -121,6 +121,22 @@ export function createParticleEngine(app: Application, layer: Container): { play
     particles.push({ node: g, vx: 0, vy: 0, gravity: 0, life: 0, ttl, grow: 3.2 })
   }
 
+  /** §32 slash arcs — the sweeping crescents that carry Octopath-style hit feel: a few
+   *  thick arc strokes at random rotations that expand and fade over ~0.3s. */
+  const slash = (x: number, y: number, color: number, count = 2) => {
+    for (let i = 0; i < count; i++) {
+      const g = new Graphics()
+        .arc(0, 0, 18 + i * 9, -1.1, 1.0)
+        .stroke({ width: 5 - i, color, cap: 'round' })
+      g.x = x
+      g.y = y
+      g.rotation = Math.random() * Math.PI * 2
+      g.alpha = 0.95
+      layer.addChild(g)
+      particles.push({ node: g, vx: 0, vy: 0, gravity: 0, life: 0, ttl: 0.28 + i * 0.06, grow: 3.6 })
+    }
+  }
+
   const rise = (x: number, y: number, color: number, count: number) => {
     burst(x, y, { color, count, speed: 55, gravity: -120, ttl: 0.9 })
   }
@@ -150,13 +166,13 @@ export function createParticleEngine(app: Application, layer: Container): { play
   const play = (cue: FxCue, at: { x: number; y: number }, stage: { w: number; h: number }) => {
     const { x, y } = at
     switch (cue.kind) {
-      case 'impact': burst(x, y, { color: GOLD, count: 12, speed: 170 }); dotFlash(x, y); break
-      case 'crit': burst(x, y, { color: GOLD, count: 14, speed: 240 }); burst(x, y, { color: RED, count: 10, speed: 220 }); ring(x, y, GOLD); break
-      case 'weak': burst(x, y, { color: 0xffa14d, count: 18, speed: 210 }); ring(x, y, 0xffa14d, 0.4); break
+      case 'impact': slash(x, y, GOLD, 2); burst(x, y, { color: GOLD, count: 12, speed: 170 }); dotFlash(x, y); break
+      case 'crit': slash(x, y, 0xffa14d, 3); burst(x, y, { color: GOLD, count: 14, speed: 240 }); burst(x, y, { color: RED, count: 10, speed: 220 }); ring(x, y, GOLD); break
+      case 'weak': slash(x, y, 0xff8a4d, 3); burst(x, y, { color: 0xffa14d, count: 18, speed: 210 }); ring(x, y, 0xffa14d, 0.4); break
       case 'miss': burst(x, y, { color: GREY, count: 6, speed: 70, gravity: -40, ttl: 0.5 }); break
-      case 'enemyHit': burst(x, y, { color: RED, count: 12, speed: 170 }); break
-      case 'enemyHeavy': burst(x, y, { color: RED, count: 26, speed: 260 }); ring(x, y, RED, 0.55); break
-      case 'skill': burst(x, y, { color: CYAN, count: 18, speed: 210 }); ring(x, y, WHITE, 0.4); break
+      case 'enemyHit': slash(x, y, RED, 2); burst(x, y, { color: RED, count: 12, speed: 170 }); break
+      case 'enemyHeavy': slash(x, y, RED, 3); burst(x, y, { color: RED, count: 26, speed: 260 }); ring(x, y, RED, 0.55); break
+      case 'skill': slash(x, y, CYAN, 2); burst(x, y, { color: CYAN, count: 18, speed: 210 }); ring(x, y, WHITE, 0.4); break
       case 'heal': rise(x, y, GREEN, 14); ring(x, y, GREEN, 0.5); break
       case 'buff': rise(stage.w / 2, stage.h * 0.7, GOLD, 18); break
       case 'debuff': burst(stage.w / 2, stage.h * 0.4, { color: 0xb48fff, count: 16, speed: 90, gravity: 140 }); break
