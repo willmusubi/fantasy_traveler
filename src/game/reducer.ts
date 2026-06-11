@@ -736,12 +736,28 @@ export function gameReducer(input: ReducerInput, event: DomainEvent): ReducerRes
       return reduceTalentLearned(input, event.characterId, event.nodeId)
     case 'HabitMilestone':
       return reduceHabitMilestone(input, event.habitId, event.streak)
-    // Unwired — kept for the extensibility contract.
     case 'CalendarEventAttended':
+      return reduceCalendarAttended(input)
+    // Unwired — kept for the extensibility contract.
     case 'FocusStreak':
     case 'DialogueInteraction':
       return noop(input)
   }
+}
+
+/** §29 — honoring a scheduled commitment is a reflective act like journaling: small party
+ *  XP + split affinity + a proud mood flag. (No UI dispatches this yet — the calendar zone
+ *  shows due TODOS; this completes the event contract for when real events grow a UI.) */
+function reduceCalendarAttended(input: ReducerInput): ReducerResult {
+  const t = newTurn(input)
+  grantXp(t, 6)
+  gainAffinitySplit(t, 6)
+  const companion = activeCompanion(t.party)
+  if (companion) {
+    t.gs.moodFlags = { ...t.gs.moodFlags, [companion.id]: 'proud' }
+    t.effects.push({ type: 'mood', characterId: companion.id, flag: 'proud' })
+  }
+  return finishTurn(t)
 }
 
 // ---------- §28 growth-system events ----------

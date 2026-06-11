@@ -11,15 +11,17 @@ import type { ChatMessage } from '../domain/types'
 import { useGame } from './gameStore'
 import { useTodos } from './todoStore'
 
-// Mock ONLY chat(); keep AIError / buildSystemPrompt real so the store's error handling runs for real.
-vi.mock('../ai/client', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../ai/client')>()
-  return { ...actual, chat: vi.fn() }
+// Mock ONLY chatStream() (§29 — the store streams now); keep AIError real so the store's
+// error handling runs for real. The mock ignores onDelta unless a test drives it.
+vi.mock('../ai/clientStream', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../ai/clientStream')>()
+  return { ...actual, chatStream: vi.fn() }
 })
-import { AIError, chat } from '../ai/client'
+import { AIError } from '../ai/client'
+import { chatStream } from '../ai/clientStream'
 import { threadIdFor, useChat } from './chatStore'
 
-const mockChat = vi.mocked(chat)
+const mockChat = vi.mocked(chatStream)
 
 beforeEach(async () => {
   await closeDb()
@@ -29,7 +31,7 @@ beforeEach(async () => {
   })
   useGame.setState({ gameState: null, characters: [], affinities: {}, reaction: null, toasts: [], lastDamageByEnemy: {}, activeQuest: null, recruitedId: null, ready: false })
   useTodos.setState({ todos: [], loaded: false, completionCount: 0 })
-  useChat.setState({ target: { kind: 'solo', companionId: PRIMARY_COMPANION_ID }, messages: [], sending: false, thinkingName: null, error: null })
+  useChat.setState({ target: { kind: 'solo', companionId: PRIMARY_COMPANION_ID }, messages: [], sending: false, thinkingName: null, streamingText: null, streamingSender: null, error: null })
   mockChat.mockReset()
 })
 
@@ -132,5 +134,27 @@ describe('send — group (队伍群聊)', () => {
     expect(useChat.getState().error).toContain('API Key')
     expect(useChat.getState().sending).toBe(false)
     expect(useChat.getState().thinkingName).toBeNull()
+  })
+})
+
+describe('§29 streaming state machine', () => {
+  it('streamingText grows via onDelta, then commits as a message and clears', async () => {
+    const { useGame: game } = await import('./gameStore')
+    await game.getState().seedNewGame('旅人')
+    const observed: (string | null)[] = []
+    mockChat.mockImplementation(async (_req, onDelta) => {
+      onDelta('你')
+      observed.push(useChat.getState().streamingText)
+      onDelta('你好呀')
+      observed.push(useChat.getState().streamingText)
+      return { reply: '你好呀，旅人！', expression: 'smile' as const }
+    })
+    await useChat.getState().send('在吗')
+    expect(observed).toEqual(['你', '你好呀'])
+    const s = useChat.getState()
+    expect(s.streamingText).toBeNull()
+    expect(s.streamingSender).toBeNull()
+    expect(s.sending).toBe(false)
+    expect(s.messages.at(-1)?.text).toBe('你好呀，旅人！')
   })
 })

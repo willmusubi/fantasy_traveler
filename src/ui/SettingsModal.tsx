@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { testKey, type AIErrorKind } from '../ai/client'
 import { downloadBackup, importAll, readBackupFile, type BackupPayload } from '../data/backup'
-import { useSettings } from '../state/settingsStore'
+import { estimateUsd, useSettings } from '../state/settingsStore'
 import { Modal } from './Modal'
 
 const MODELS = [
@@ -200,6 +200,25 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
             像素风合成音效（命中/会心/治疗/胜利……）。调到 0 即静音。
           </div>
         </div>
+
+        {settings.tokenUsage && (
+          <div className="field">
+            <label>用量统计（自 {settings.tokenUsage.since.slice(0, 10)} 起）</label>
+            <div style={{ fontSize: 11, color: 'var(--muted)', lineHeight: 1.8 }}>
+              输入 {(settings.tokenUsage.input / 1000).toFixed(1)}k · 输出 {(settings.tokenUsage.output / 1000).toFixed(1)}k ·
+              缓存命中 {(settings.tokenUsage.cacheRead / 1000).toFixed(1)}k tokens
+              <br />
+              估算花费 ≈ ${estimateUsd(settings.tokenUsage, settings.model).toFixed(3)}（按当前所选模型单价粗估）
+              <button
+                className="btn btn-ghost"
+                style={{ padding: '1px 8px', marginLeft: 8 }}
+                onClick={() => void update({ tokenUsage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, since: new Date().toISOString() } })}
+              >
+                清零
+              </button>
+            </div>
+          </div>
+        )}
 
         <p className="disclosure">
           🔒 你的 Key 只保存在本机浏览器（IndexedDB），不会上传到任何服务器；对话直接从你的浏览器发往

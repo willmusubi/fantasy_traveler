@@ -787,6 +787,8 @@ export interface Settings {
   battleFx?: boolean
   /** §27 synth SFX volume 0–100 (default 70; 0 = silent). */
   sfxVolume?: number
+  /** §29 cumulative token usage since `since` (cost meter; reset from the settings panel). */
+  tokenUsage?: { input: number; output: number; cacheRead: number; cacheWrite: number; since: string }
 }
 
 // ---------- Save / backup ----------

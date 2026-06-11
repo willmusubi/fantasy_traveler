@@ -7,6 +7,8 @@ export function ChatPanel({ onOpenSettings }: { onOpenSettings: () => void }) {
   const messages = useChat((s) => s.messages)
   const sending = useChat((s) => s.sending)
   const thinkingName = useChat((s) => s.thinkingName)
+  const streamingText = useChat((s) => s.streamingText)
+  const streamingSender = useChat((s) => s.streamingSender)
   const error = useChat((s) => s.error)
   const send = useChat((s) => s.send)
   const target = useChat((s) => s.target)
@@ -25,7 +27,7 @@ export function ChatPanel({ onOpenSettings }: { onOpenSettings: () => void }) {
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: prefersReducedMotion() ? 'auto' : 'smooth' })
-  }, [messages, sending])
+  }, [messages, sending, streamingText])
 
   const submit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -50,7 +52,15 @@ export function ChatPanel({ onOpenSettings }: { onOpenSettings: () => void }) {
             </div>
           )
         })}
-        {sending && (
+        {/* §29 — the streaming bubble: the reply types itself out, then commits above. */}
+        {streamingText !== null && streamingText.length > 0 && (
+          <div className="msg bot streaming">
+            {isGroup && streamingSender && <div className="msg-speaker">{nameFor(streamingSender)}</div>}
+            {streamingText}
+            <span className="stream-caret" aria-hidden />
+          </div>
+        )}
+        {sending && !streamingText && (
           <div className="thinking">
             {thinkingWho} 正在思考
             <span className="dot" /><span className="dot" /><span className="dot" />

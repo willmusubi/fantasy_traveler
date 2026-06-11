@@ -1,5 +1,6 @@
 import { create } from 'zustand'
-import { AIError, buildSystemPrompt, chat, type ChatTurn } from '../ai/client'
+import { AIError, buildSystemPrompt, type ChatTurn } from '../ai/client'
+import { chatStream } from '../ai/clientStream'
 import { buildContext, renderContextZh } from '../ai/contextBuilder'
 import { buildGroupSystemPrompt } from '../ai/prompts'
 import { PRIMARY_COMPANION_ID } from '../companion/roster'
@@ -8,6 +9,7 @@ import type { Character, ChatMessage, MoodFlag } from '../domain/types'
 import { renderScriptFacts } from '../world/scriptFacts'
 import { scriptDefFor } from '../world/worlds'
 import { selectPartyCompanions, selectPlayer, useGame } from './gameStore'
+import { useJournal } from './journalStore'
 import { useSettings } from './settingsStore'
 import { useTodos } from './todoStore'
 
@@ -36,6 +38,10 @@ interface ChatStore {
   sending: boolean
   /** In a group round, the companion currently composing a reply (drives the thinking line). null in solo. */
   thinkingName: string | null
+  /** §29 — the reply streaming in RIGHT NOW (typing effect); null when idle/committed. */
+  streamingText: string | null
+  /** §29 — companion id of the streaming bubble (group chat labels the speaker). */
+  streamingSender: string | null
   error: string | null
   hydrate: () => Promise<void>
   setTarget: (t: ChatTarget) => Promise<void>
@@ -56,6 +62,8 @@ export const useChat = create<ChatStore>((set, get) => ({
   messages: [],
   sending: false,
   thinkingName: null,
+  streamingText: null,
+  streamingSender: null,
   error: null,
 
   async hydrate() {
@@ -106,6 +114,7 @@ async function runSolo(trimmed: string): Promise<void> {
     todos: useTodos.getState().todos,
     moodFlag,
     now: new Date(),
+    journal: useJournal.getState().entries, // §29 — companions see your recent moods
   })
 
   const history: ChatTurn[] = useChat
@@ -121,21 +130,30 @@ async function runSolo(trimmed: string): Promise<void> {
   const contextBlock = scriptFacts ? `${renderContextZh(ctx)}\n\n${scriptFacts}` : renderContextZh(ctx)
 
   try {
-    const reply = await chat({
-      apiKey,
-      model: settings.model,
-      systemPrompt: buildSystemPrompt(companion.persona, companion.name),
-      contextBlock,
-      history,
-      userMessage: trimmed,
-    })
+    // §29 streaming: the reply types itself out, then commits as a normal message.
+    useChat.setState({ streamingSender: companion.id, streamingText: '' })
+    const reply = await chatStream(
+      {
+        apiKey,
+        model: settings.model,
+        systemPrompt: buildSystemPrompt(companion.persona, companion.name),
+        contextBlock,
+        history,
+        userMessage: trimmed,
+      },
+      (replySoFar) => useChat.setState({ streamingText: replySoFar }),
+    )
+    if (reply.usage) void useSettings.getState().recordTokenUsage(reply.usage)
     const botMsg = msg(threadId, { sender: companion.id, text: reply.reply, expression: reply.expression })
     await chatRepo.putMessage(botMsg)
-    useChat.setState({ messages: [...useChat.getState().messages, botMsg], sending: false })
+    useChat.setState({
+      messages: [...useChat.getState().messages, botMsg],
+      sending: false, streamingText: null, streamingSender: null,
+    })
   } catch (err) {
     const e = err instanceof AIError ? err : new AIError('unknown', String(err))
     if (e.kind === 'no-key') {
-      useChat.setState({ sending: false, error: NO_KEY_ERROR })
+      useChat.setState({ sending: false, streamingText: null, streamingSender: null, error: NO_KEY_ERROR })
       return
     }
     const fallback = msg(threadId, {
@@ -146,7 +164,7 @@ async function runSolo(trimmed: string): Promise<void> {
     await chatRepo.putMessage(fallback)
     useChat.setState({
       messages: [...useChat.getState().messages, fallback],
-      sending: false,
+      sending: false, streamingText: null, streamingSender: null,
       error: e.kind === 'auth' ? 'API Key 无效，请在设置里检查。' : '网络或服务异常，已先用备用回复。',
     })
   }
@@ -182,7 +200,10 @@ async function runGroupRound(trimmed: string): Promise<void> {
     const affinityRank = game.affinities[companion.id]?.rank ?? 'none'
     const moodFlag: MoodFlag = gs?.moodFlags[companion.id] ?? 'idle'
     const ctx = renderContextZh(
-      buildContext({ player, affinityRank, todos: useTodos.getState().todos, moodFlag, now: new Date() }),
+      buildContext({
+        player, affinityRank, todos: useTodos.getState().todos, moodFlag, now: new Date(),
+        journal: useJournal.getState().entries, // §29
+      }),
     )
     // Rebuilt every iteration from live messages → later speakers see earlier replies this round.
     const transcript = renderGroupTranscript(useChat.getState().messages, roundStart, player.name, game.characters)
@@ -190,22 +211,31 @@ async function runGroupRound(trimmed: string): Promise<void> {
     const contextBlock = [ctx, scriptFacts, transcript].filter(Boolean).join('\n\n')
 
     try {
-      const reply = await chat({
-        apiKey,
-        model: settings.model,
-        systemPrompt: buildGroupSystemPrompt(companion.persona, companion.name, others),
-        contextBlock,
-        history: [], // multi-speaker history lives in the transcript above (avoids role-alternation issues)
-        userMessage: `现在轮到你「${companion.name}」在群聊里接话。读上面的群聊记录，自然地回应${player.name}或其他伙伴刚说的话，只说你自己的一两句。`,
-      })
+      // §29 streaming: each speaker's reply types out before committing (sequential round kept).
+      useChat.setState({ streamingSender: companion.id, streamingText: '' })
+      const reply = await chatStream(
+        {
+          apiKey,
+          model: settings.model,
+          systemPrompt: buildGroupSystemPrompt(companion.persona, companion.name, others),
+          contextBlock,
+          history: [], // multi-speaker history lives in the transcript above (avoids role-alternation issues)
+          userMessage: `现在轮到你「${companion.name}」在群聊里接话。读上面的群聊记录，自然地回应${player.name}或其他伙伴刚说的话，只说你自己的一两句。`,
+        },
+        (replySoFar) => useChat.setState({ streamingText: replySoFar }),
+      )
+      if (reply.usage) void useSettings.getState().recordTokenUsage(reply.usage)
       const botMsg = msg(GROUP_THREAD_ID, { sender: companion.id, text: reply.reply, expression: reply.expression })
       await chatRepo.putMessage(botMsg)
-      useChat.setState({ messages: [...useChat.getState().messages, botMsg] }) // appears before the next speaks
+      useChat.setState({
+        messages: [...useChat.getState().messages, botMsg], // appears before the next speaks
+        streamingText: null, streamingSender: null,
+      })
     } catch (err) {
       const e = err instanceof AIError ? err : new AIError('unknown', String(err))
       if (e.kind === 'no-key') {
         // A missing key fails for everyone — surface ONE banner and stop the whole round.
-        useChat.setState({ sending: false, thinkingName: null, error: NO_KEY_ERROR })
+        useChat.setState({ sending: false, thinkingName: null, streamingText: null, streamingSender: null, error: NO_KEY_ERROR })
         return
       }
       const fallback = msg(GROUP_THREAD_ID, {
@@ -214,11 +244,11 @@ async function runGroupRound(trimmed: string): Promise<void> {
         expression: 'worried',
       })
       await chatRepo.putMessage(fallback)
-      useChat.setState({ messages: [...useChat.getState().messages, fallback] })
+      useChat.setState({ messages: [...useChat.getState().messages, fallback], streamingText: null, streamingSender: null })
     }
   }
 
-  useChat.setState({ sending: false, thinkingName: null })
+  useChat.setState({ sending: false, thinkingName: null, streamingText: null, streamingSender: null })
 }
 
 /** The current round as a speaker-labeled transcript, injected into each group speaker's context.

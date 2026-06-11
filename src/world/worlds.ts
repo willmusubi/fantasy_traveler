@@ -4,6 +4,7 @@
 // generation; `storyChapters` are the canon spine (also the offline path). (§22)
 
 import { LOCAL_PACK } from '../content/localPack'
+import { validateScriptDef } from './validateScript'
 import type { Element, EnemyArchetype, PhysKind, QuestBlueprint, ScriptChapter, ScriptDef, WorldId } from '../domain/types'
 
 /** A canon antagonist for a world — becomes an encounter enemy and grounds the generator. */
@@ -204,8 +205,13 @@ export const SCRIPT_DEFS: Record<string, ScriptDef> = LOCAL_PACK?.scripts ?? {}
  *  so the pipeline can still resolve the active script (and advance chapters) after a page reload. */
 const RUNTIME_SCRIPTS: Record<string, ScriptDef> = {}
 
-/** Register a script for runtime resolution (idempotent; last write wins). */
+/** Register a script for runtime resolution (idempotent; last write wins).
+ *  §29 — authoring mistakes are surfaced instead of failing silently in play (a broken
+ *  nextChapterId reads as a premature finale; an unreachable chapter never runs). */
 export function registerRuntimeScript(script: ScriptDef): void {
+  const v = validateScriptDef(script)
+  for (const e of v.errors) console.warn(`[script:${script.id}] 错误: ${e}`)
+  for (const w of v.warnings) console.warn(`[script:${script.id}] 提示: ${w}`)
   RUNTIME_SCRIPTS[script.id] = script
 }
 
