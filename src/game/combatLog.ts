@@ -4,6 +4,7 @@
 
 import { COMPANION_DEFS } from '../companion/roster'
 import { SKILL_DEFS } from '../companion/skills'
+import { STATUS_META } from '../domain/config'
 import type { Character, CombatLogEntry, CombatLogLine, ID, Monster } from '../domain/types'
 import { t } from '../i18n'
 import { EQUIPMENT_DEFS } from '../world/equipment'
@@ -108,6 +109,65 @@ export function buildLogEntry(effects: GameEffect[], ctx: LogContext): CombatLog
       case 'equipmentGranted':
         lines.push({ icon: '◆', text: `获得装备：${t(EQUIPMENT_DEFS[e.defId]?.nameKey ?? e.defId)}`, tone: 'good' })
         break
+      case 'statusApplied': {
+        const meta = STATUS_META[e.kind]
+        const label = meta?.label ?? e.kind
+        const isParty = ctx.characters.some((c) => c.id === e.targetId) || COMPANION_DEFS[e.targetId]
+        if (isParty) {
+          const name = nameOf(e.targetId)
+          lines.push({ icon: '🔻', text: `${name} 陷入「${label}」（${e.rounds} 回合）`, tone: 'bad' })
+        } else {
+          const name = enemyNameById(e.targetId)
+          lines.push({ icon: '✦', text: `${name} 陷入「${label}」（${e.rounds} 回合）`, tone: 'good' })
+        }
+        break
+      }
+      case 'statusTick': {
+        const meta = STATUS_META[e.kind]
+        const label = meta?.label ?? e.kind
+        const isParty = ctx.characters.some((c) => c.id === e.targetId) || COMPANION_DEFS[e.targetId]
+        if (isParty) {
+          const name = nameOf(e.targetId)
+          if (e.kind === 'regen') lines.push({ icon: '🌿', text: `「${label}」治愈 ${name}  +${e.amount}（剩 ${e.hpAfter}）`, tone: 'good' })
+          else lines.push({ icon: '🔥', text: `「${label}」侵蚀 ${name}  -${e.amount}（剩 ${e.hpAfter}）`, tone: 'bad' })
+        } else {
+          const name = enemyNameById(e.targetId)
+          if (e.kind === 'regen') lines.push({ icon: '🌿', text: `「${label}」治愈 ${name}  +${e.amount}（剩 ${e.hpAfter}）`, tone: 'bad' })
+          else lines.push({ icon: '☠', text: `「${label}」侵蚀 ${name}  -${e.amount}（剩 ${e.hpAfter}）`, tone: 'good' })
+        }
+        break
+      }
+      case 'statusExpired': {
+        const meta = STATUS_META[e.kind]
+        const label = meta?.label ?? e.kind
+        const name = ctx.characters.some((c) => c.id === e.targetId) || COMPANION_DEFS[e.targetId]
+          ? nameOf(e.targetId)
+          : enemyNameById(e.targetId)
+        lines.push({ icon: '✔', text: `${name} 的「${label}」解除了`, tone: 'info' })
+        break
+      }
+      case 'statusSkipped': {
+        const meta = STATUS_META[e.kind]
+        const label = meta?.label ?? e.kind
+        const isParty = ctx.characters.some((c) => c.id === e.targetId) || COMPANION_DEFS[e.targetId]
+        if (isParty) {
+          lines.push({ icon: '💤', text: `${nameOf(e.targetId)} 因「${label}」无法行动！`, tone: 'bad' })
+        } else {
+          lines.push({ icon: '💤', text: `${enemyNameById(e.targetId)} 因「${label}」无法行动！`, tone: 'good' })
+        }
+        break
+      }
+      case 'guarded': {
+        const name = nameOf(e.characterId)
+        lines.push({ icon: '🛡', text: `${name} 摆出防御姿态（受击伤害减半）`, tone: 'info' })
+        break
+      }
+      case 'bossPhase': {
+        const name = enemyNameById(e.enemyId)
+        const phaseNote = e.phaseLabel ? `（${e.phaseLabel}）` : ''
+        lines.push({ icon: '⚠', text: `⚠ ${name} ${e.narration ?? '进入了新的阶段'}${phaseNote}`, tone: 'bad' })
+        break
+      }
       // 'heal' (per-target) is summarised by the skillCast line; 'mood' isn't logged.
     }
   }

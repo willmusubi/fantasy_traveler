@@ -1,7 +1,8 @@
 // Pure effective-stats computation (§22). Base stats + equipped-item flat bonuses +
 // party-wide synergy bonuses. Empty context = identity (so M0 combat is unchanged).
 
-import type { Character, OwnedEquipment, PartyBuff, Stats } from '../domain/types'
+import type { Character, CombatStatus, ID, OwnedEquipment, PartyBuff, Stats } from '../domain/types'
+import { slowedSpd } from './status'
 import { EQUIPMENT_DEFS } from '../world/equipment'
 import type { SynergyDef } from '../world/relationships'
 
@@ -11,6 +12,10 @@ export interface CombatContext {
   /** Active party-wide buffs/debuffs. def/spd/magPct fold into the returned stats here;
    *  atkPct stays in the attack-damage mult. Optional → omitting it = identity. */
   partyBuffs?: PartyBuff[]
+  /** §26 — per-combatant statuses for STAT folds (slow→spd). Inside a round this is the
+   *  round-start SNAPSHOT (frozen, like partyBuffs) so sync/step paths stay byte-identical;
+   *  action gates (sleep/guard) read LIVE state in the reducer instead. Optional = none. */
+  statuses?: Record<ID, CombatStatus[]>
 }
 
 export const EMPTY_COMBAT_CONTEXT: CombatContext = { ownedEquipment: [], activeSynergies: [] }
@@ -58,6 +63,10 @@ export function effectiveStats(char: Character, ctx: CombatContext): Stats {
   if (sp) s.spd = Math.max(1, Math.round(s.spd * (1 + sp)))
   const mp = sumPct('magPct')
   if (mp) s.wis = Math.max(0, Math.round(s.wis * (1 + mp)))
+
+  // 4. §26 status stat-folds: slow cuts spd (floored at 1 — the timeline never stalls).
+  const myStatuses = ctx.statuses?.[char.id]
+  if (myStatuses && myStatuses.length > 0) s.spd = slowedSpd(s.spd, myStatuses)
 
   return s
 }

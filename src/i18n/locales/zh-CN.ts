@@ -7,14 +7,17 @@ export const zhCN: Record<string, string> = {
   'skill.xingchen': '星尘斩',
   'skill.juxing': '聚星',
   'skill.liuxing': '流星坠',
+  'skill.fenxing': '焚星之刃',
   'skill.xingmang': '星芒',
   'skill.yexing': '夜星奏',
   'skill.xingyue': '星之约',
   'skill.xinghui': '星辉落',
+  'skill.mianxing': '眠星之雾',
   'skill.yuguang': '愈光',
   'skill.xingyu': '星雨',
   'skill.shouwang': '守望',
   'skill.mantian': '满天星',
+  'skill.jingxing': '净星之露',
 
   // Monster
   'monster.procrastination': '拖延心魔',

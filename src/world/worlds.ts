@@ -157,6 +157,28 @@ const STARGAZERS: WorldDef = {
           narrationVictory:
             '回响被驱散，钟塔重新响起报时的钟声。这一次，三人抢在它吞没今天之前，把光阴稳稳护住。' +
             '星图的尽头，浮现出新的星轨——观星会的行动，仍未结束。',
+          // §26 boss phases: two transitions that escalate the fight without changing its length.
+          phases: [
+            {
+              triggerHpPct: 0.5,
+              atkBoost: 4,
+              newPattern: [
+                { kind: 'attack' },
+                { kind: 'heavy', mult: 1.6, telegraph: '虚空凝聚' },
+                { kind: 'attack' },
+                { kind: 'heavy', mult: 2.0, telegraph: '蓄力' },
+              ],
+              phaseLabel: '狂怒',
+              narration: '「时间……永远属于我！」钟塔忽然倒转，回响的轮廓扭曲膨胀，蓄力的频率越来越快。',
+            },
+            {
+              triggerHpPct: 0.2,
+              inflicts: { kind: 'slow', rounds: 2 },
+              atkBoost: 4,
+              phaseLabel: '背水',
+              narration: '「……我要把你们都留在今天，永远。」回响爆出浓重的黑雾，笼罩全队——时间感正在流失！',
+            },
+          ],
         },
       ],
       reward: { equipmentDefIds: ['stargazer_seal', 'astral_canvas'], unlockCompanionIds: [], playerXp: 150 },

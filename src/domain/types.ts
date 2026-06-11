@@ -228,6 +228,43 @@ export interface Affinity {
   dailyGainedOn: string // YYYY-MM-DD local
 }
 
+// ---------- §26 status effects ----------
+
+/** §26 status kinds. poison/burn = DOT and regen = HOT (both resolve at ROUND END);
+ *  sleep/paralysis = action skip — sleep additionally FREEZES an enemy's rotation
+ *  (stalling a telegraphed heavy is the tactical reward) while paralysis lets the
+ *  rotation advance silently; silence = skills locked (basic attacks only); slow = spd
+ *  cut (CTB); guard = the 防御 stance (1-round, self-applied, halves incoming hits). */
+export type StatusKind =
+  | 'poison' | 'burn' | 'regen'
+  | 'sleep' | 'paralysis' | 'silence' | 'slow'
+  | 'guard'
+
+/** A live status on one combatant (party member or enemy), stored in
+ *  GameState.activeStatuses keyed by combatant id. Durations tick down ONCE per round
+ *  at round end (1 task = 1 round), so 「中毒 3 回合」 = three real tasks. */
+export interface CombatStatus {
+  id: ID
+  kind: StatusKind
+  /** Rounds remaining; decremented at round end, removed at 0. */
+  roundsLeft: number
+  /** Kind-specific strength, resolved FLAT at application time:
+   *  poison/burn/regen = HP per round; slow = fraction of spd lost (0.3 = −30%). */
+  magnitude?: number
+  /** Who inflicted it (UI/flavor). */
+  sourceId?: ID
+}
+
+/** An authored status infliction (skill / enemy move / boss phase). `chance` in [0,1]
+ *  (default 1 — no RNG consumed); DOT/HOT magnitude defaults to a fraction of the
+ *  TARGET's maxHp (config.STATUS_DOT_PCT), resolved flat at application time. */
+export interface StatusEffectSpec {
+  kind: StatusKind
+  rounds: number
+  magnitude?: number
+  chance?: number
+}
+
 // ---------- Game state ----------
 
 // §25: enemies have NO MP — they act on a fixed rotation (出招表). One entry per turn,
@@ -240,6 +277,27 @@ export interface EnemyMove {
   mult?: number
   /** Wind-up banner text (e.g. 「蓄力」) — shown the round BEFORE this move lands. */
   telegraph?: string
+  /** §26 — status this move tries to inflict on the struck target (on hit). */
+  inflicts?: StatusEffectSpec
+}
+
+/** §26 boss phase transition — fires the moment the boss's HP first drops to/below the
+ *  trigger (huge hits can cross several at once; authored DESCENDING by triggerHpPct).
+ *  Authored on content bosses + clamped by coerceQuest for AI quests; spawned endless
+ *  enemies have none. */
+export interface BossPhase {
+  /** hp/maxHp threshold in (0,1) — e.g. 0.5 fires at half HP. */
+  triggerHpPct: number
+  /** Replaces the move rotation (patternIdx resets to 0; an opening telegraph warns immediately). */
+  newPattern?: EnemyMove[]
+  /** Flat atk increase on transition. */
+  atkBoost?: number
+  /** Inflicted on every living party member at the transition. */
+  inflicts?: StatusEffectSpec
+  /** Deep-mode HUD badge, e.g. 「狂怒」. */
+  phaseLabel?: string
+  /** Banner/combat-log line at the flip. */
+  narration?: string
 }
 
 export interface Monster {
@@ -278,6 +336,10 @@ export interface Monster {
   /** Fixed move rotation (no MP); index advances per enemy turn. */
   pattern?: EnemyMove[]
   patternIdx?: number
+  /** §26 — authored phase transitions (DESCENDING triggerHpPct). Absent = single-phase. */
+  phases?: BossPhase[]
+  /** §26 — how many phases have fired (default 0). Survives saves so a flip never re-fires. */
+  phaseIdx?: number
 }
 
 // ---------- World / Quest (§22) ----------
@@ -313,6 +375,8 @@ export interface EncounterSpec {
   physResist?: PhysKind[]
   /** Difficulty archetype → TTK budget + move rotation. Default: primary=elite, adds=mook. */
   archetype?: EnemyArchetype
+  /** §26 — phase transitions for the PRIMARY enemy (clamped on coerce; escorts never get phases). */
+  phases?: BossPhase[]
 }
 
 /** One escort enemy in a team encounter (the primary's fields live on EncounterSpec). */
@@ -507,6 +571,16 @@ export type GameEffect =
   | { type: 'scriptChoiceOffered'; prompt: string; options: ScriptChoiceOption[] }
   | { type: 'scriptChapterAdvanced'; chapterId: string; firstEnemy?: string }
   | { type: 'scriptCompleted'; scriptId: string; flags: Record<string, string | boolean> }
+  // §26 status effects + boss phases
+  | { type: 'statusApplied'; targetId: ID; kind: StatusKind; rounds: number; sourceId?: ID }
+  /** DOT damage / HOT heal resolved at round end. amount = HP lost (poison/burn) or gained (regen). */
+  | { type: 'statusTick'; targetId: ID; kind: StatusKind; amount: number; hpAfter: number }
+  | { type: 'statusExpired'; targetId: ID; kind: StatusKind }
+  /** A slept/paralyzed combatant lost its action this round. */
+  | { type: 'statusSkipped'; targetId: ID; kind: StatusKind }
+  /** A member took the 防御 stance (1-round guard status; halves incoming hits). */
+  | { type: 'guarded'; characterId: ID }
+  | { type: 'bossPhase'; enemyId: ID; phaseLabel?: string; narration?: string }
 
 /** An in-progress interactive (FF-style step-through) round. Present only while the player is
  *  resolving turns; cleared at finalize. Persisted in GameState so a refresh mid-round resumes. */
@@ -520,6 +594,10 @@ export interface ActiveRound {
   charges: Record<ID, number>
   /** partyBuffs at round start — the frozen combat context for every turn this round. */
   buffsAtStart: PartyBuff[]
+  /** §26 — activeStatuses snapshot at round start. STAT folds (slow→spd) read this frozen
+   *  view so the step-through matches the sync path exactly; ACTION gates (sleep/guard)
+   *  read live state. Optional for save-compat (missing → falls back to live state). */
+  statusesAtStart?: Record<ID, CombatStatus[]>
   /** Index of the next turn to resolve (0..order.length). */
   index: number
   /** Party ids that have taken their first turn this round (distinguishes skill from lap). */
@@ -587,9 +665,13 @@ export interface GameState {
    *  and CARRIES ACROSS completions (the turn-order timeline loops). Missing entry = 0. */
   charge: Record<ID, number>
   /** Per party member: the action performed when the next completed task executes the round —
-   *  a chosen SkillId, or a MISSING entry = basic attack. Persists across tasks (set-and-forget);
-   *  a planned skill that can't be paid at execution falls back to a basic attack. */
+   *  a chosen SkillId, the GUARD_ACTION sentinel ('guard' = 防御), or a MISSING entry = basic
+   *  attack. Persists across tasks (set-and-forget); a planned skill that can't be paid at
+   *  execution falls back to a basic attack. */
   roundPlan: Record<ID, SkillId>
+  /** §26 — live statuses per combatant id (party members AND enemies). Missing/empty = none.
+   *  Optional for save-compat; withGameStateDefaults backfills {}. */
+  activeStatuses?: Record<ID, CombatStatus[]>
   /** An interactive round mid-resolution (FF-style step-through). Absent when idle. */
   activeRound?: ActiveRound
 }
@@ -625,6 +707,11 @@ export interface Settings {
    *  'simple' (default) hides advanced stats/weakness intel; 'deep' surfaces the
    *  10-stat sheet, derived 物攻/物防/魔攻/魔防, enemy weakness icons + 蓄力 banner. */
   combatDepth?: 'simple' | 'deep'
+  /** §26 smart auto tactics (效率优先): when ON, members with NO explicit plan/choice pick
+   *  sensible defaults on their own — heal the hurt, cleanse the afflicted, guard at low HP,
+   *  burst a sleeping enemy — so light players are never asked to micromanage. An explicit
+   *  roundPlan/choice always wins. Backfilled to true by the settings store. */
+  autoTactics?: boolean
 }
 
 // ---------- Save / backup ----------

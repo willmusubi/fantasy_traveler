@@ -2,6 +2,7 @@
 // default action — what the turn picker pre-selects and what ⚡全部自动 / off-screen completions use.
 
 import { unlockedSkills } from '../companion/skills'
+import { GUARD_ACTION } from '../domain/config'
 import type { Character } from '../domain/types'
 import { resourceOf } from '../game/resources'
 import { t } from '../i18n'
@@ -38,6 +39,14 @@ export function DefaultActionsModal({ onClose }: { onClose: () => void }) {
                 onClick={() => void setRoundAction(c.id, null)}
               >
                 <span className="skill-btn-name">普攻</span>
+                <span className="skill-btn-cost">MP0</span>
+              </button>
+              <button
+                className={`skill-btn ${planned === GUARD_ACTION ? 'selected' : ''}`}
+                title={`${c.name}：防御姿态——出手时受击伤害减半`}
+                onClick={() => void setRoundAction(c.id, GUARD_ACTION)}
+              >
+                <span className="skill-btn-name">🛡防御</span>
                 <span className="skill-btn-cost">MP0</span>
               </button>
               {skills.map((skill) => {

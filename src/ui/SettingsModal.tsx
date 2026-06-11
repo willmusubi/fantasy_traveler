@@ -152,6 +152,22 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
+        <div className="field">
+          <label className="setting-toggle-label" htmlFor="setting-auto-tactics">
+            <input
+              id="setting-auto-tactics"
+              type="checkbox"
+              className="setting-toggle-cb"
+              checked={settings.autoTactics ?? true}
+              onChange={(e) => void update({ autoTactics: e.target.checked })}
+            />
+            <span>智能自动战术</span>
+          </label>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, lineHeight: 1.6 }}>
+            自动战斗时伙伴会自行治疗/净化/防御/抓住敌人睡眠的空档
+          </div>
+        </div>
+
         <p className="disclosure">
           🔒 你的 Key 只保存在本机浏览器（IndexedDB），不会上传到任何服务器；对话直接从你的浏览器发往
           Anthropic。这适合个人测试使用。

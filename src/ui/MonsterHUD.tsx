@@ -121,9 +121,9 @@ export function MonsterHUD() {
         <div className="stage-ground" aria-hidden />
 
         <div className="party-side">
-          {player && <BattleSprite char={player} isPlayer res={resourceOf(gs, player)} charge={gs.charge[player.id] ?? 0} plan={gs.activeRound ? undefined : planLabel(player)} active={activeId === player.id} />}
+          {player && <BattleSprite char={player} isPlayer res={resourceOf(gs, player)} charge={gs.charge[player.id] ?? 0} plan={gs.activeRound ? undefined : planLabel(player)} active={activeId === player.id} statuses={gs.activeStatuses?.[player.id]} />}
           {partyCompanions.map((c) => (
-            <BattleSprite key={c.id} char={c} isPlayer={false} res={resourceOf(gs, c)} charge={gs.charge[c.id] ?? 0} plan={gs.activeRound ? undefined : planLabel(c)} active={activeId === c.id} />
+            <BattleSprite key={c.id} char={c} isPlayer={false} res={resourceOf(gs, c)} charge={gs.charge[c.id] ?? 0} plan={gs.activeRound ? undefined : planLabel(c)} active={activeId === c.id} statuses={gs.activeStatuses?.[c.id]} />
           ))}
         </div>
 
@@ -138,6 +138,7 @@ export function MonsterHUD() {
               active={m.id === activeEnemyId}
               onSelect={allyDeciding ? setCombatTarget : undefined}
               deepIntel={deep}
+              statuses={gs.activeStatuses?.[m.id]}
             />
           ))}
         </div>

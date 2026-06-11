@@ -234,6 +234,9 @@ export function monsterFromEncounter(
     element: enc.element ?? hashed.element,
     physWeak: enc.physWeak ?? hashed.physWeak,
     physResist: enc.physResist ?? hashed.physResist,
+    // §26 — authored phase transitions (primary bosses; escorts never carry them).
+    phases: enc.phases?.map((p) => ({ ...p, newPattern: p.newPattern?.map((mv) => ({ ...mv })) })),
+    phaseIdx: enc.phases ? 0 : undefined,
   }
 }
 

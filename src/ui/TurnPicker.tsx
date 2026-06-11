@@ -5,8 +5,10 @@
 
 import { useEffect } from 'react'
 import { SKILL_DEFS, unlockedSkills } from '../companion/skills'
+import { GUARD_ACTION } from '../domain/config'
 import type { SkillId } from '../domain/types'
 import { autoTargetEnemy, livingEnemies } from '../game/combat'
+import { hasStatus } from '../game/status'
 import { resourceOf } from '../game/resources'
 import { t } from '../i18n'
 import { useGame } from '../state/gameStore'
@@ -42,9 +44,18 @@ export function TurnPicker() {
   const pickedAlive = combatTargetId ? living.find((m) => m.id === combatTargetId) : undefined
   const targetId = (pickedAlive ?? autoTarget)?.id
 
+  // Check if the acting member is silenced (skills locked).
+  const isSilenced = decider
+    ? hasStatus(gs.activeStatuses ?? {}, decider.id, 'silence')
+    : false
+
   // Single-target actions hit the chosen enemy; AoE skills ('allEnemies') ignore the pick and the
   // engine loops every living enemy.
-  const choose = (choice: SkillId | 'basic') => {
+  const choose = (choice: SkillId | 'basic' | typeof GUARD_ACTION) => {
+    if (choice === GUARD_ACTION) {
+      void advanceRound(GUARD_ACTION, undefined)
+      return
+    }
     const aoe = choice !== 'basic' && SKILL_DEFS[choice]?.target === 'allEnemies'
     void advanceRound(choice, aoe ? undefined : targetId)
   }
@@ -87,7 +98,20 @@ export function TurnPicker() {
             <span className="skill-btn-name">普攻</span>
             <span className="skill-btn-cost">MP0</span>
           </button>
-          {unlockedSkills(decider).map((skill) => {
+          <button
+            className={`skill-btn ${planned === GUARD_ACTION ? 'selected' : ''}`}
+            title={`${decider.name}：防御姿态——本轮受击伤害减半`}
+            onClick={() => choose(GUARD_ACTION)}
+          >
+            <span className="skill-btn-name">🛡防御</span>
+            <span className="skill-btn-cost">MP0</span>
+          </button>
+          {isSilenced && (
+            <span className="skill-btn-silence-hint" title="角色处于「沉默」状态，技能被封印，只能普攻或防御">
+              🤐 沉默中，技能封印
+            </span>
+          )}
+          {!isSilenced && unlockedSkills(decider).map((skill) => {
             const affordable = r.mp >= skill.mpCost && (!skill.hpCost || r.hp > skill.hpCost)
             return (
               <button

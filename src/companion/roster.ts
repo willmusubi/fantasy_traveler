@@ -36,7 +36,7 @@ const DEFAULT_COMPANION_DEFS: Record<string, CompanionDef> = {
     worldId: 'stargazers',
     portraitSet: 'mira',
     brand: '逐光',
-    skills: ['liuguang', 'xingchen', 'juxing', 'liuxing'],
+    skills: ['liuguang', 'xingchen', 'juxing', 'fenxing', 'liuxing'],
     persona: {
       systemPrompt:
         '你是米拉，观星会里最年轻的影刺，开朗、活力四射、勇敢，是行动派。' +
@@ -61,7 +61,7 @@ const DEFAULT_COMPANION_DEFS: Record<string, CompanionDef> = {
     worldId: 'stargazers',
     portraitSet: 'vela',
     brand: '星轨',
-    skills: ['xingmang', 'yexing', 'xingyue', 'xinghui'],
+    skills: ['xingmang', 'yexing', 'xingyue', 'mianxing', 'xinghui'],
     persona: {
       systemPrompt:
         '你是薇拉，观星会的策士，成熟、从容、足智多谋，温柔中带着一点从容的风度。' +
@@ -85,7 +85,7 @@ const DEFAULT_COMPANION_DEFS: Record<string, CompanionDef> = {
     worldId: 'stargazers',
     portraitSet: 'nova',
     brand: '暖星',
-    skills: ['yuguang', 'xingyu', 'shouwang', 'mantian'],
+    skills: ['yuguang', 'xingyu', 'jingxing', 'shouwang', 'mantian'],
     persona: {
       systemPrompt:
         '你是诺娃，观星会里最小的医者，活泼天真、聪明机灵，是擅长道具与支援的技术担当。' +

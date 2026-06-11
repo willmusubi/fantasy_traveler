@@ -17,6 +17,8 @@ import {
   ENEMY_DEF_SOAK,
   GOLD_QUEST_CLEAR,
   GOLD_TODO,
+  GUARD_ACTION,
+  GUARD_DAMAGE_REDUCTION,
   JOURNAL_XP,
   MP_REGEN_TODO,
   OVERDUE_ATK_GROW,
@@ -26,6 +28,8 @@ import {
   SKILL_ATK_MULT,
   SKILL_BUFF_TURNS,
   SKILL_HEAL_MULT,
+  SMART_GUARD_HP_PCT,
+  SMART_HEAL_HP_PCT,
   TODO_XP,
   VICTORY_AFFINITY,
   VICTORY_HP_RESTORE_PCT,
@@ -35,7 +39,7 @@ import {
   WIPE_REVIVE_HP_PCT,
 } from '../domain/config'
 import { localDateKey } from '../domain/dates'
-import type { ActiveRound, Affinity, CharResource, Character, Element, GameEffect, GameState, ID, Mood, MoodFlag, Monster, OwnedEquipment, PartyBuff, PhysKind, Priority, Quest, QuestReward, ScriptChapter, ScriptDef, SkillId, Stats, TurnActor, WeaponKind } from '../domain/types'
+import type { ActiveRound, Affinity, CharResource, Character, CombatStatus, Element, GameEffect, GameState, ID, Mood, MoodFlag, Monster, OwnedEquipment, PartyBuff, PhysKind, Priority, Quest, QuestReward, ScriptChapter, ScriptDef, SkillId, Stats, StatusEffectSpec, StatusKind, TurnActor, WeaponKind } from '../domain/types'
 import type { SynergyDef } from '../world/relationships'
 import { EQUIPMENT_DEFS } from '../world/equipment'
 import { autoTargetEnemy, ctbRound, defeatRewards, livingEnemies, primaryEnemy, spawnMonster, teamCleared, teamFromEncounter, type CtbUnit } from './combat'
@@ -44,6 +48,10 @@ import { effectiveStats, type CombatContext } from './effectiveStats'
 import type { DomainEvent } from './events'
 import { profileFor } from '../companion/roster'
 import { applyXp } from './leveling'
+import {
+  applyStatus, clearAllStatuses, clearStatusKinds, cloneStatusMap, hasStatus,
+  incapacitatedBy, slowedSpd, statusesOf, tickDurations, type StatusMap,
+} from './status'
 
 export interface ReducerInput {
   gameState: GameState
@@ -65,6 +73,11 @@ export interface ReducerInput {
    *  Default = 0.5 → "neutral" determinism: always hits, never crits, exact mid variance —
    *  legacy callers and tests get formula-exact numbers. The pipeline passes Math.random. */
   roll?: () => number
+  /** §26 smart auto tactics. 'smart' (Settings.autoTactics → pipeline) lets a member with NO
+   *  explicit plan/choice pick a sensible default — cleanse the afflicted, heal the hurt, guard
+   *  at low HP, burst a sleeping enemy — so light players never micromanage. Default 'plain'
+   *  (basic attack, exactly the pre-§26 behavior) for legacy callers and tests. */
+  tactics?: 'plain' | 'smart'
 }
 
 function rollOf(input: ReducerInput): () => number {
@@ -91,7 +104,33 @@ function combatCtx(input: ReducerInput): CombatContext {
     ownedEquipment: input.ownedEquipment ?? [],
     activeSynergies: input.activeSynergies ?? [],
     partyBuffs: input.gameState.partyBuffs, // def/spd/magPct fold into effectiveStats
+    statuses: input.gameState.activeStatuses, // §26 stat folds (slow→spd), input-time view
   }
+}
+
+// ---------- §26 status helpers (Turn-level) ----------
+
+/** Live statuses of one combatant on the mutable turn state. */
+function stOf(t: Turn, id: ID): CombatStatus[] {
+  return statusesOf(t.gs.activeStatuses, id)
+}
+
+/** Try to inflict `spec` on `targetId` (party member OR enemy). chance < 1 consumes ONE roll
+ *  (specs without chance stay RNG-free, so existing paths keep formula-exact determinism).
+ *  Pushes statusApplied on success. */
+function inflict(
+  t: Turn, targetId: ID, spec: StatusEffectSpec, targetMaxHp: number, sourceId?: ID,
+): boolean {
+  const chance = spec.chance ?? 1
+  if (chance < 1 && rollOf(t.input)() >= chance) return false
+  t.gs.activeStatuses = applyStatus(t.gs.activeStatuses, targetId, spec, targetMaxHp, t.input.newId, sourceId)
+  t.effects.push({ type: 'statusApplied', targetId, kind: spec.kind, rounds: spec.rounds, sourceId })
+  return true
+}
+
+/** Death cleanse: a combatant that hits 0 HP sheds every status (revival starts clean). */
+function shedStatuses(t: Turn, id: ID): void {
+  if (stOf(t, id).length > 0) t.gs.activeStatuses = clearAllStatuses(t.gs.activeStatuses, id)
 }
 
 // GameEffect now lives in domain/types.ts (so GameState.activeRound can reference it without a
@@ -126,6 +165,7 @@ function newTurn(input: ReducerInput): Turn {
     ...input.gameState,
     resources: { ...input.gameState.resources },
     partyBuffs: [...input.gameState.partyBuffs],
+    activeStatuses: cloneStatusMap(input.gameState.activeStatuses), // §26
   }
   const combatants = input.party.filter((c) => c.kind === 'player' || c.kind === 'companion')
   return { gs, party: input.party, combatants, input, effects: [], stats: {}, aff: { ...input.affinities } }
@@ -218,7 +258,20 @@ function dealToParty(t: Turn, rawAmount: number, ctx: CombatContext): void {
   const hpAfter = Math.max(0, r.hp - dmg)
   setR(t, target, { ...r, hp: hpAfter })
   t.effects.push({ type: 'enemyAttack', targetId: target.id, amount: dmg })
-  if (hpAfter <= 0) t.effects.push({ type: 'downed', characterId: target.id })
+  if (hpAfter <= 0) {
+    shedStatuses(t, target.id) // §26 death cleanse
+    t.effects.push({ type: 'downed', characterId: target.id })
+  }
+}
+
+/** §26: advance an enemy's rotation pointer; warn if the NEXT move is a telegraphed wind-up.
+ *  Shared by enemyStrike (after a swing) and the paralysis skip (the wind-up still telegraphs). */
+function advanceEnemyPattern(t: Turn, attacker: Monster): void {
+  const moves = attacker.pattern && attacker.pattern.length > 0 ? attacker.pattern : [{ kind: 'attack' as const }]
+  const nextIdx = ((attacker.patternIdx ?? 0) + 1) % moves.length
+  t.gs.enemies = t.gs.enemies.map((m) => (m.id === attacker.id ? { ...m, patternIdx: nextIdx } : m))
+  const nextMove = moves[nextIdx]
+  if (nextMove.telegraph) t.effects.push({ type: 'enemyTelegraph', enemyId: attacker.id, text: nextMove.telegraph })
 }
 
 /** §25 enemy TURN attack: the next move of the enemy's rotation (no MP), resolved through
@@ -249,6 +302,11 @@ function enemyStrike(t: Turn, attacker: Monster, ctx: CombatContext): void {
     const pool = alive.reduce((s, c) => s + rOf(t, c).hp, 0)
     dmg = Math.min(dmg, Math.round(pool * BOSS_HEAVY_POOL_CAP)) // §25 death-spiral guard 1
   }
+  // §26 防御 stance: a guarding target halves the incoming TURN hit (live status read —
+  // a guard taken earlier THIS round protects this round).
+  if (!out.missed && hasStatus(t.gs.activeStatuses, target.id, 'guard')) {
+    dmg = Math.max(1, Math.round(dmg * (1 - GUARD_DAMAGE_REDUCTION)))
+  }
   if (out.missed) {
     t.effects.push({ type: 'enemyAttack', targetId: target.id, amount: 0, missed: true })
   } else {
@@ -256,13 +314,16 @@ function enemyStrike(t: Turn, attacker: Monster, ctx: CombatContext): void {
     const hpAfter = Math.max(0, r.hp - dmg)
     setR(t, target, { ...r, hp: hpAfter })
     t.effects.push({ type: 'enemyAttack', targetId: target.id, amount: dmg, heavy: move.kind === 'heavy' || undefined })
-    if (hpAfter <= 0) t.effects.push({ type: 'downed', characterId: target.id })
+    if (hpAfter <= 0) {
+      shedStatuses(t, target.id) // §26 death cleanse
+      t.effects.push({ type: 'downed', characterId: target.id })
+    } else if (move.inflicts) {
+      // §26 — the move tries to stick its status on the struck (still standing) target.
+      inflict(t, target.id, move.inflicts, sOf(t, target).maxHp, attacker.id)
+    }
   }
   // Advance the rotation; warn if the NEXT move is a telegraphed wind-up.
-  const nextIdx = (idx + 1) % moves.length
-  t.gs.enemies = t.gs.enemies.map((m) => (m.id === attacker.id ? { ...m, patternIdx: nextIdx } : m))
-  const nextMove = moves[nextIdx]
-  if (nextMove.telegraph) t.effects.push({ type: 'enemyTelegraph', enemyId: attacker.id, text: nextMove.telegraph })
+  advanceEnemyPattern(t, attacker)
 }
 
 /** Setback when every on-field member is downed: revive low, the primary enemy recovers some HP.
@@ -298,12 +359,17 @@ function healChar(t: Turn, c: Character, amount: number): void {
 
 // ---------- Active-turn (CTB) helper ----------
 
-/** The live CTB units (living combatants + every living enemy) from the current persistent gauges. */
+/** The live CTB units (living combatants + every living enemy) from the current persistent gauges.
+ *  §26: slow cuts spd on BOTH sides (party via effectiveStats' status fold; enemies here). */
 function ctbUnitsOf(t: Turn, ctx: CombatContext): CtbUnit[] {
   const able = t.combatants.filter((c) => rOf(t, c).hp > 0)
   return [
     ...able.map((c) => ({ side: 'party' as const, id: c.id, spd: effectiveStats(c, ctx).spd, charge: t.gs.charge[c.id] ?? 0 })),
-    ...livingEnemies(t.gs.enemies).map((m) => ({ side: 'enemy' as const, id: m.id, spd: m.spd, charge: t.gs.charge[m.id] ?? 0 })),
+    ...livingEnemies(t.gs.enemies).map((m) => ({
+      side: 'enemy' as const, id: m.id,
+      spd: slowedSpd(m.spd, statusesOf(ctx.statuses, m.id)),
+      charge: t.gs.charge[m.id] ?? 0,
+    })),
   ]
 }
 
@@ -318,13 +384,12 @@ function resolveTarget(t: Turn, targetId?: ID): Monster | undefined {
   return autoTargetEnemy(t.gs.enemies)
 }
 
-/** Apply `dmg` to the enemy `enemyId`; push a damage effect carrying `targetId`. If that empties
- *  the LAST living enemy, run the encounter-clear cascade. Returns true on a fresh team-clear.
- *  Shared by todo-completion basic attacks and skill kills. An already-dead enemy is a no-op (an
- *  AoE pass may still name it). */
-function damageEnemy(
-  t: Turn, enemyId: ID, dmg: number, actorId: ID, fromSkill = false,
-  flags?: { crit?: boolean; typeMult?: number },
+/** §26 shared core of every enemy-HP-loss path (basic/skill hits AND round-end DOT): apply
+ *  the damage, let the caller push its own effect (so the log reads naturally), then run the
+ *  boss-phase check and — if that emptied the LAST living enemy — the encounter-clear cascade.
+ *  Returns true on a fresh team-clear. An already-dead/missing enemy is a no-op. */
+function applyEnemyDamageCore(
+  t: Turn, enemyId: ID, dmg: number, pushEffect: (hpAfter: number) => void,
 ): boolean {
   const idx = t.gs.enemies.findIndex((m) => m.id === enemyId)
   if (idx < 0) return false
@@ -334,13 +399,69 @@ function damageEnemy(
   const next = [...t.gs.enemies]
   next[idx] = { ...m, hp: hpAfter }
   t.gs.enemies = next
-  t.effects.push({
-    type: 'damage', amount: dmg, monsterHpAfter: hpAfter, actorId, targetId: enemyId, fromSkill,
-    crit: flags?.crit || undefined,
-    typeMult: flags?.typeMult !== undefined && flags.typeMult !== 1 ? flags.typeMult : undefined,
-  })
+  pushEffect(hpAfter)
+  if (hpAfter <= 0) shedStatuses(t, enemyId) // §26 death cleanse
+  else checkBossPhases(t, enemyId) // §26 phase flip the moment a threshold is crossed
   if (!teamCleared(t.gs.enemies)) return false
   return resolveEncounterClear(t)
+}
+
+/** Apply `dmg` to the enemy `enemyId`; push a damage effect carrying `targetId`. If that empties
+ *  the LAST living enemy, run the encounter-clear cascade. Returns true on a fresh team-clear.
+ *  Shared by todo-completion basic attacks and skill kills. An already-dead enemy is a no-op (an
+ *  AoE pass may still name it). */
+function damageEnemy(
+  t: Turn, enemyId: ID, dmg: number, actorId: ID, fromSkill = false,
+  flags?: { crit?: boolean; typeMult?: number },
+): boolean {
+  return applyEnemyDamageCore(t, enemyId, dmg, (hpAfter) => {
+    t.effects.push({
+      type: 'damage', amount: dmg, monsterHpAfter: hpAfter, actorId, targetId: enemyId, fromSkill,
+      crit: flags?.crit || undefined,
+      typeMult: flags?.typeMult !== undefined && flags.typeMult !== 1 ? flags.typeMult : undefined,
+    })
+  })
+}
+
+/** §26 boss phases: fire every authored phase whose threshold the enemy's HP has crossed
+ *  (a huge hit can cross several; phases are authored DESCENDING by triggerHpPct). Each flip
+ *  can swap the rotation (patternIdx 0 — an opening telegraph warns immediately), boost atk,
+ *  and inflict a status on the living party. phaseIdx persists so a flip never re-fires. */
+function checkBossPhases(t: Turn, enemyId: ID): void {
+  const idx = t.gs.enemies.findIndex((m) => m.id === enemyId)
+  if (idx < 0) return
+  let m = t.gs.enemies[idx]
+  const phases = m.phases
+  if (!phases || phases.length === 0 || m.hp <= 0) return
+  let fired = m.phaseIdx ?? 0
+  let changed = false
+  while (fired < phases.length && m.hp / m.maxHp <= phases[fired].triggerHpPct) {
+    const ph = phases[fired]
+    fired++
+    changed = true
+    m = {
+      ...m,
+      phaseIdx: fired,
+      atk: m.atk + (ph.atkBoost ?? 0),
+      pattern: ph.newPattern ? ph.newPattern.map((mv) => ({ ...mv })) : m.pattern,
+      patternIdx: ph.newPattern ? 0 : m.patternIdx,
+    }
+    t.effects.push({ type: 'bossPhase', enemyId, phaseLabel: ph.phaseLabel, narration: ph.narration })
+    if (ph.inflicts) {
+      for (const c of t.combatants) {
+        if (rOf(t, c).hp <= 0) continue
+        inflict(t, c.id, ph.inflicts, sOf(t, c).maxHp, enemyId)
+      }
+    }
+    const first = m.pattern?.[m.patternIdx ?? 0]
+    if (ph.newPattern && first?.telegraph) {
+      t.effects.push({ type: 'enemyTelegraph', enemyId, text: first.telegraph })
+    }
+  }
+  if (!changed) return
+  const next = [...t.gs.enemies]
+  next[idx] = m
+  t.gs.enemies = next
 }
 
 /** The whole enemy team just fell: book the clear payout ONCE — guarded by `clearedEncounterKey`,
@@ -574,6 +695,11 @@ function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: Comb
         }
         if (out.missed) continue
         cleared = damageEnemy(t, id, out.dmg, casterId, true, { crit: out.crit, typeMult: out.typeMult }) || cleared
+        if (!cleared && skill.inflictsStatus) {
+          // §26: each landed AoE hit tries to stick the status on its (surviving) target.
+          const after = t.gs.enemies.find((m) => m.id === id)
+          if (after && after.hp > 0) inflict(t, after.id, skill.inflictsStatus, after.maxHp, casterId)
+        }
       }
       return cleared
     }
@@ -587,16 +713,35 @@ function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: Comb
     }
     const monsterHpAfter = Math.max(0, target.hp - out.dmg) // shown in the log so it reconciles with the bar
     t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'attack', amount: out.dmg, monsterHpAfter, targetId: target.id, crit: out.crit || undefined, typeMult: out.typeMult !== 1 ? out.typeMult : undefined })
-    return damageEnemy(t, target.id, out.dmg, casterId, true, { crit: out.crit, typeMult: out.typeMult })
+    const cleared = damageEnemy(t, target.id, out.dmg, casterId, true, { crit: out.crit, typeMult: out.typeMult })
+    if (!cleared && skill.inflictsStatus) {
+      // §26: a landed attack tries to stick its status on the (still standing) target.
+      const after = t.gs.enemies.find((m) => m.id === target.id)
+      if (after && after.hp > 0) inflict(t, after.id, skill.inflictsStatus, after.maxHp, casterId)
+    }
+    return cleared
   }
   if (skill.kind === 'heal') {
     const heal = Math.round(eff.wis * skill.power * SKILL_HEAL_MULT)
     t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'heal', amount: heal })
     if (skill.target === 'allAllies') {
-      for (const c of t.combatants) healChar(t, c, heal)
+      for (const c of t.combatants) {
+        healChar(t, c, heal)
+        if (skill.clearsStatus) cleanseStatuses(t, c.id, skill.clearsStatus)
+      }
     } else {
+      // §26: a cleanse-heal prefers an AFFLICTED ally over the most-injured one.
       const injured = t.combatants.filter((c) => rOf(t, c).hp < sOf(t, c).maxHp).sort((a, b) => rOf(t, a).hp - rOf(t, b).hp)[0]
-      if (injured) healChar(t, injured, heal)
+      const afflicted = skill.clearsStatus
+        ? t.combatants
+            .filter((c) => rOf(t, c).hp > 0 && skill.clearsStatus!.some((k) => hasStatus(t.gs.activeStatuses, c.id, k)))
+            .sort((a, b) => rOf(t, a).hp - rOf(t, b).hp)[0]
+        : undefined
+      const healTarget = afflicted ?? injured
+      if (healTarget) {
+        healChar(t, healTarget, heal)
+        if (skill.clearsStatus) cleanseStatuses(t, healTarget.id, skill.clearsStatus)
+      }
     }
     return false
   }
@@ -609,15 +754,30 @@ function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: Comb
     return false
   }
   // debuff: lower defense. 'allEnemies' → every living enemy; else the chosen/auto single target.
+  // §26: power 0 = a PURE status move (no def shred); inflictsStatus applies on cast.
+  t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'debuff', amount: Math.round(skill.power * 100) })
   const lowerDef = (m: Monster): Monster => ({ ...m, def: Math.max(0, Math.round(m.def * (1 - skill.power))) })
   if (skill.target === 'allEnemies') {
-    t.gs.enemies = t.gs.enemies.map((m) => (m.hp > 0 ? lowerDef(m) : m))
+    if (skill.power > 0) t.gs.enemies = t.gs.enemies.map((m) => (m.hp > 0 ? lowerDef(m) : m))
+    if (skill.inflictsStatus) {
+      for (const m of livingEnemies(t.gs.enemies)) inflict(t, m.id, skill.inflictsStatus, m.maxHp, casterId)
+    }
   } else {
     const target = resolveTarget(t, targetId)
-    if (target) t.gs.enemies = t.gs.enemies.map((m) => (m.id === target.id ? lowerDef(m) : m))
+    if (target) {
+      if (skill.power > 0) t.gs.enemies = t.gs.enemies.map((m) => (m.id === target.id ? lowerDef(m) : m))
+      if (skill.inflictsStatus) inflict(t, target.id, skill.inflictsStatus, target.maxHp, casterId)
+    }
   }
-  t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'debuff', amount: Math.round(skill.power * 100) })
   return false
+}
+
+/** §26: clear the listed status kinds from one combatant, logging each removal. */
+function cleanseStatuses(t: Turn, id: ID, kinds: StatusKind[]): void {
+  const { map, cleared } = clearStatusKinds(t.gs.activeStatuses, id, kinds)
+  if (cleared.length === 0) return
+  t.gs.activeStatuses = map
+  for (const k of cleared) t.effects.push({ type: 'statusExpired', targetId: id, kind: k })
 }
 
 // ---------- Round resolution (shared by the synchronous path AND the interactive step-through) ----------
@@ -637,6 +797,8 @@ interface RoundCtx {
   order: TurnActor[]
   charges: Record<ID, number>
   buffsAtStart: PartyBuff[]
+  /** §26 — activeStatuses snapshot at round start (STAT folds only; action gates read live). */
+  statusesAtStart: StatusMap
 }
 
 /** Build a round's frozen snapshot (ctx/mult/order/charges) WITHOUT resolving any turn. */
@@ -646,17 +808,22 @@ function buildRoundCtx(input: ReducerInput, priority: Priority): RoundCtx {
   // Each member's basic hit scales by the todo's priority (the round's "push") and active buffs.
   const mult = PRIORITY_MULT[priority] * (1 + activeAtkBuff(t.gs))
   const { order, charges } = ctbRound(ctbUnitsOf(t, ctx))
-  return { priority, mult, order, charges, buffsAtStart: [...input.gameState.partyBuffs] }
+  return {
+    priority, mult, order, charges,
+    buffsAtStart: [...input.gameState.partyBuffs],
+    statusesAtStart: cloneStatusMap(input.gameState.activeStatuses),
+  }
 }
 
-/** The combat context for a round's turns: equipment/synergies from input, partyBuffs FROZEN to the
- *  round-start snapshot (so the interactive path, which re-reads live state each step, matches the
- *  synchronous path exactly). */
+/** The combat context for a round's turns: equipment/synergies from input, partyBuffs AND
+ *  statuses FROZEN to the round-start snapshot (so the interactive path, which re-reads live
+ *  state each step, matches the synchronous path exactly). */
 function roundCombatCtx(input: ReducerInput, rctx: RoundCtx): CombatContext {
   return {
     ownedEquipment: input.ownedEquipment ?? [],
     activeSynergies: input.activeSynergies ?? [],
     partyBuffs: rctx.buffsAtStart,
+    statuses: rctx.statusesAtStart,
   }
 }
 
@@ -679,15 +846,45 @@ function resolveTurnInto(
     // round is skipped. §25: it executes the next move of its rotation (can miss, may telegraph).
     const attacker = t.gs.enemies.find((m) => m.id === act.id)
     if (!attacker || attacker.hp <= 0) return false
+    // §26 action gates — sleep FREEZES the rotation (stalling a telegraphed heavy is the
+    // tactical reward); paralysis advances it silently (the wind-up still telegraphs).
+    const incap = incapacitatedBy(t.gs.activeStatuses, attacker.id)
+    if (incap) {
+      t.effects.push({ type: 'statusSkipped', targetId: attacker.id, kind: incap })
+      if (incap === 'paralysis') advanceEnemyPattern(t, attacker)
+      return false
+    }
     enemyStrike(t, attacker, ctx)
     return false
   }
   const member = t.combatants.find((c) => c.id === act.id)
   if (!member || rOf(t, member).hp <= 0) return false // downed mid-timeline → can't act
+  // §26: a slept/paralyzed member loses the action (their "choice" is consumed by the skip;
+  // isLiveDecision already returns false for them, so the step-through never pauses here).
+  const memberIncap = incapacitatedBy(t.gs.activeStatuses, member.id)
+  if (memberIncap) {
+    acted.add(member.id)
+    t.effects.push({ type: 'statusSkipped', targetId: member.id, kind: memberIncap })
+    return false
+  }
   const firstTurn = !acted.has(member.id)
   acted.add(member.id)
-  const plannedId = firstTurn ? (choice !== undefined ? choice : t.gs.roundPlan[member.id]) : undefined
-  const skill = plannedId && plannedId !== 'basic' ? unlockedSkills(member).find((s) => s.id === plannedId) : undefined
+  let plannedId = firstTurn ? (choice !== undefined ? choice : t.gs.roundPlan[member.id]) : undefined
+  // §26 smart tactics: fill the DEFAULT first-turn action only (an explicit choice/plan wins).
+  if (firstTurn && plannedId === undefined && t.input.tactics === 'smart') {
+    plannedId = smartDefaultAction(t, member, ctx)
+  }
+  // §26 防御: a 1-round guard status — halves incoming enemy TURN hits until round end.
+  if (plannedId === GUARD_ACTION) {
+    t.gs.activeStatuses = applyStatus(
+      t.gs.activeStatuses, member.id, { kind: 'guard', rounds: 1 }, sOf(t, member).maxHp, t.input.newId,
+    )
+    t.effects.push({ type: 'guarded', characterId: member.id })
+    return false
+  }
+  // §26 silence: planned skills are locked — fall through to the basic attack.
+  const silenced = hasStatus(t.gs.activeStatuses, member.id, 'silence')
+  const skill = !silenced && plannedId && plannedId !== 'basic' ? unlockedSkills(member).find((s) => s.id === plannedId) : undefined
   const r = rOf(t, member)
   if (skill && r.mp >= skill.mpCost && r.hp > (skill.hpCost ?? 0)) {
     return applySkillEffect(t, member, skill, ctx, targetId) // planned skill fires (spends MP/HP)
@@ -723,13 +920,56 @@ function resolveTurnInto(
   return damageEnemy(t, target.id, out.dmg, member.id, false, { crit: out.crit, typeMult: out.typeMult })
 }
 
+/** §26 smart tactics (Settings.autoTactics → input.tactics 'smart'): pick a better DEFAULT
+ *  first-turn action for a member with no explicit choice/plan, so light players get sensible
+ *  play without ever being asked. Deterministic, MP-aware, NO RNG consumed. Heuristics in order:
+ *  1. an ally carries a harmful status → an affordable cleanse-heal that covers it
+ *  2. an ally is dangerously hurt → the strongest affordable heal
+ *  3. own HP critically low → 防御
+ *  4. an enemy is sleeping → the strongest affordable attack skill (burst the window)
+ *  else undefined → the normal basic attack. */
+function smartDefaultAction(t: Turn, member: Character, ctx: CombatContext): SkillId | undefined {
+  void ctx
+  const r = rOf(t, member)
+  const affordable = unlockedSkills(member).filter(
+    (s) => r.mp >= s.mpCost && r.hp > (s.hpCost ?? 0),
+  )
+  const HARMFUL: StatusKind[] = ['sleep', 'paralysis', 'silence', 'poison', 'burn', 'slow']
+  const alive = t.combatants.filter((c) => rOf(t, c).hp > 0)
+
+  // 1. cleanse — an afflicted ally + a heal that covers at least one of their ailments.
+  const afflicted = alive.find((c) => HARMFUL.some((k) => hasStatus(t.gs.activeStatuses, c.id, k)))
+  if (afflicted) {
+    const cleanse = affordable
+      .filter((s) => s.kind === 'heal' && s.clearsStatus?.some((k) => hasStatus(t.gs.activeStatuses, afflicted.id, k)))
+      .sort((a, b) => b.power - a.power)[0]
+    if (cleanse) return cleanse.id
+  }
+  // 2. heal — any ally dangerously hurt.
+  const hurt = alive.some((c) => rOf(t, c).hp < sOf(t, c).maxHp * SMART_HEAL_HP_PCT)
+  if (hurt) {
+    const heal = affordable.filter((s) => s.kind === 'heal').sort((a, b) => b.power - a.power)[0]
+    if (heal) return heal.id
+  }
+  // 3. guard — own HP critically low (and nothing better to do about it).
+  if (r.hp < sOf(t, member).maxHp * SMART_GUARD_HP_PCT) return GUARD_ACTION
+  // 4. burst a sleeping enemy.
+  if (livingEnemies(t.gs.enemies).some((m) => hasStatus(t.gs.activeStatuses, m.id, 'sleep'))) {
+    const attack = affordable.filter((s) => s.kind === 'attack').sort((a, b) => b.power - a.power)[0]
+    if (attack) return attack.id
+  }
+  return undefined
+}
+
 /** True if order[index] is a LIVE party member taking its FIRST turn — the point the interactive
- *  resolver pauses at for the player's choice (enemy turns, laps and downed slots are auto-run). */
+ *  resolver pauses at for the player's choice (enemy turns, laps, downed slots and §26
+ *  slept/paralyzed members are auto-run — the step-through NEVER pauses on a skip). */
 function isLiveDecision(t: Turn, order: TurnActor[], index: number, acted: Set<ID>): boolean {
   const a = order[index]
   if (!a || a.side !== 'party' || acted.has(a.id)) return false
   const member = t.combatants.find((c) => c.id === a.id)
-  return !!member && rOf(t, member).hp > 0
+  if (!member || rOf(t, member).hp <= 0) return false
+  return incapacitatedBy(t.gs.activeStatuses, member.id) === undefined
 }
 
 /** Persist the round's CTB gauges (combatants + every current enemy). A respawned next-team enemy
@@ -739,6 +979,80 @@ function commitCharges(t: Turn, charges: Record<ID, number>): void {
   for (const c of t.combatants) nextCharge[c.id] = charges[c.id] ?? t.gs.charge[c.id] ?? 0
   for (const m of t.gs.enemies) nextCharge[m.id] = charges[m.id] ?? t.gs.charge[m.id] ?? 0
   t.gs.charge = nextCharge
+}
+
+/** §26 round-end status pass: DOT/HOT resolve, then every duration ticks down (1 task = 1
+ *  round, so 「中毒 3 回合」 = three real tasks). Poison can land the killing blow on the
+ *  LAST enemy (full clear cascade) or down a member (the wipeCheck right after catches an
+ *  all-down). Guard expires silently (it's an implicit 1-round stance). */
+function tickStatusesRoundEnd(t: Turn): void {
+  const map = t.gs.activeStatuses
+  if (!map || Object.keys(map).length === 0) return
+
+  // 1. Party DOT / HOT.
+  for (const c of t.combatants) {
+    if (rOf(t, c).hp <= 0) continue
+    for (const s of stOf(t, c.id)) {
+      if (s.kind === 'poison' || s.kind === 'burn') {
+        const dmg = Math.max(1, Math.round(s.magnitude ?? 1))
+        const r = rOf(t, c)
+        const hpAfter = Math.max(0, r.hp - dmg)
+        setR(t, c, { ...r, hp: hpAfter })
+        t.effects.push({ type: 'statusTick', targetId: c.id, kind: s.kind, amount: dmg, hpAfter })
+        if (hpAfter <= 0) {
+          shedStatuses(t, c.id) // §26 death cleanse
+          t.effects.push({ type: 'downed', characterId: c.id })
+          break
+        }
+      } else if (s.kind === 'regen') {
+        const r = rOf(t, c)
+        const max = sOf(t, c).maxHp
+        if (r.hp >= max) continue
+        const amount = Math.min(max - r.hp, Math.max(1, Math.round(s.magnitude ?? 1)))
+        setR(t, c, { ...r, hp: r.hp + amount })
+        t.effects.push({ type: 'statusTick', targetId: c.id, kind: 'regen', amount, hpAfter: r.hp + amount })
+      }
+    }
+  }
+
+  // 2. Enemy DOT / HOT (snapshot ids — a poison kill respawns the array mid-loop; the
+  //    freshly-spawned team is never ticked this round).
+  for (const id of livingEnemies(t.gs.enemies).map((m) => m.id)) {
+    for (const s of statusesOf(t.gs.activeStatuses, id)) {
+      const live = t.gs.enemies.find((m) => m.id === id)
+      if (!live || live.hp <= 0) break
+      if (s.kind === 'poison' || s.kind === 'burn') {
+        const dmg = Math.max(1, Math.round(s.magnitude ?? 1))
+        applyEnemyDamageCore(t, id, dmg, (hpAfter) => {
+          t.effects.push({ type: 'statusTick', targetId: id, kind: s.kind, amount: dmg, hpAfter })
+        })
+      } else if (s.kind === 'regen') {
+        const idx = t.gs.enemies.findIndex((m) => m.id === id)
+        const m = t.gs.enemies[idx]
+        if (m.hp >= m.maxHp) continue
+        const amount = Math.min(m.maxHp - m.hp, Math.max(1, Math.round(s.magnitude ?? 1)))
+        const next = [...t.gs.enemies]
+        next[idx] = { ...m, hp: m.hp + amount }
+        t.gs.enemies = next
+        t.effects.push({ type: 'statusTick', targetId: id, kind: 'regen', amount, hpAfter: m.hp + amount })
+      }
+    }
+  }
+
+  // 3. Durations tick down for EVERY tracked combatant; expirations are logged (guard is
+  //    silent — its whole life is one round by construction). Entries for ids that no longer
+  //    exist (dead enemies of past encounters) tick away and vanish on their own.
+  const current = t.gs.activeStatuses
+  if (!current) return
+  const nextMap: StatusMap = {}
+  for (const [id, sts] of Object.entries(current)) {
+    const { kept, expired } = tickDurations(sts)
+    for (const s of expired) {
+      if (s.kind !== 'guard') t.effects.push({ type: 'statusExpired', targetId: id, kind: s.kind })
+    }
+    if (kept.length > 0) nextMap[id] = kept
+  }
+  t.gs.activeStatuses = nextMap
 }
 
 /** Per-TASK rewards (not per turn — extra turns add damage, never extra loot). Runs once at the
@@ -752,6 +1066,7 @@ function applyTaskRewards(t: Turn, priority: Priority, victory: boolean): void {
   }
   t.gs.gold += GOLD_TODO[priority]
   decayBuffs(t)
+  tickStatusesRoundEnd(t) // §26 — DOT/HOT + duration tick (1 task = 1 round)
   if (!victory) wipeCheck(t) // all on-field members downed across the round = a setback
 }
 
@@ -802,6 +1117,7 @@ function reduceRoundBegan(input: ReducerInput, priority: Priority, todoId: ID): 
     order: rctx.order,
     charges: rctx.charges,
     buffsAtStart: rctx.buffsAtStart,
+    statusesAtStart: rctx.statusesAtStart, // §26 — frozen stat-fold view for the whole round
     index,
     actedFirstTurn: [...acted],
     effects: [...t.effects],
@@ -820,7 +1136,13 @@ function reduceRoundAdvanced(input: ReducerInput, choice?: SkillId | 'basic', au
   const t = newTurn(input)
   const ar = t.gs.activeRound
   if (!ar) return noop(input)
-  const rctx: RoundCtx = { priority: ar.priority, mult: ar.mult, order: ar.order, charges: ar.charges, buffsAtStart: ar.buffsAtStart }
+  const rctx: RoundCtx = {
+    priority: ar.priority, mult: ar.mult, order: ar.order, charges: ar.charges,
+    buffsAtStart: ar.buffsAtStart,
+    // Pre-§26 saves have no snapshot — fall back to the live map (close enough for a round
+    // that began before the feature existed).
+    statusesAtStart: ar.statusesAtStart ?? cloneStatusMap(input.gameState.activeStatuses),
+  }
   const ctx = roundCombatCtx(input, rctx)
   const acted = new Set<ID>(ar.actedFirstTurn)
   let index = ar.index

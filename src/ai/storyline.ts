@@ -5,7 +5,7 @@
 // The Anthropic SDK is dynamically imported inside generateStoryline (below) so it stays out of
 // the eager main chunk; mirrors ai/client.ts. No top-level import → no SDK in first paint.
 import { CHAT_TIMEOUT_MS, DEFAULT_MODEL } from '../domain/config'
-import type { Element, EnemyArchetype, PhysKind, Quest, QuestBlueprint, WorldId } from '../domain/types'
+import type { BossPhase, Element, EnemyArchetype, EnemyMove, PhysKind, Quest, QuestBlueprint, StatusKind, WorldId } from '../domain/types'
 import { getWorldEquipment } from '../world/equipment'
 import type { WorldDef } from '../world/worlds'
 import { AIError, classify } from './client'
@@ -34,6 +34,73 @@ function clamp(n: unknown, lo: number, hi: number): number {
 function str(v: unknown, fallback: string, max: number): string {
   const s = typeof v === 'string' ? v.trim() : ''
   return (s || fallback).slice(0, max)
+}
+
+const STATUS_KINDS = new Set<StatusKind>([
+  'poison', 'burn', 'regen', 'sleep', 'paralysis', 'silence', 'slow', 'guard',
+])
+const MOVE_KINDS = new Set(['attack', 'heavy'])
+
+/** Coerce authored/AI phases array into a validated BossPhase[] (≤3 phases).
+ *  Returns undefined when no valid phases can be produced. */
+function coercePhases(raw: unknown): BossPhase[] | undefined {
+  if (!Array.isArray(raw) || raw.length === 0) return undefined
+  const phases: BossPhase[] = []
+  for (const entry of raw) {
+    if (phases.length >= 3) break
+    const e = (entry ?? {}) as Record<string, unknown>
+    // triggerHpPct must be a finite number in (0,1); clamp to [0.05, 0.95]
+    const trigRaw = Number(e.triggerHpPct)
+    if (!Number.isFinite(trigRaw)) continue // drop non-numeric
+    const triggerHpPct = Math.min(0.95, Math.max(0.05, trigRaw))
+    // atkBoost clamp [0, 50]
+    const atkBoost = e.atkBoost !== undefined ? clamp(e.atkBoost, 0, 50) : undefined
+    // phaseLabel / narration as short strings
+    const phaseLabel = e.phaseLabel !== undefined ? str(e.phaseLabel, '', 12) || undefined : undefined
+    const narration = e.narration !== undefined ? str(e.narration, '', 200) || undefined : undefined
+    // newPattern: validate each move (kind + mult + telegraph)
+    let newPattern: EnemyMove[] | undefined
+    if (Array.isArray(e.newPattern) && e.newPattern.length > 0) {
+      const moves: EnemyMove[] = []
+      for (const m of e.newPattern as unknown[]) {
+        const mv = (m ?? {}) as Record<string, unknown>
+        if (!MOVE_KINDS.has(mv.kind as string)) continue
+        const kind = mv.kind as 'attack' | 'heavy'
+        const mult = mv.mult !== undefined ? clamp(mv.mult, 0.5, 2.5) : undefined
+        const telegraph =
+          mv.telegraph !== undefined
+            ? str(mv.telegraph, '', 12) || undefined
+            : undefined
+        moves.push({ kind, ...(mult !== undefined ? { mult } : {}), ...(telegraph ? { telegraph } : {}) })
+      }
+      if (moves.length > 0) newPattern = moves
+    }
+    // inflicts: validate StatusEffectSpec
+    let inflicts: BossPhase['inflicts'] | undefined
+    if (e.inflicts && typeof e.inflicts === 'object') {
+      const inf = e.inflicts as Record<string, unknown>
+      if (typeof inf.kind === 'string' && STATUS_KINDS.has(inf.kind as StatusKind)) {
+        inflicts = {
+          kind: inf.kind as StatusKind,
+          rounds: clamp(inf.rounds ?? 1, 1, 5),
+          ...(inf.magnitude !== undefined ? { magnitude: Number(inf.magnitude) } : {}),
+          ...(inf.chance !== undefined ? { chance: clamp(inf.chance, 0, 1) } : {}),
+        }
+      }
+    }
+    phases.push({
+      triggerHpPct,
+      ...(atkBoost !== undefined ? { atkBoost } : {}),
+      ...(newPattern ? { newPattern } : {}),
+      ...(inflicts ? { inflicts } : {}),
+      ...(phaseLabel ? { phaseLabel } : {}),
+      ...(narration ? { narration } : {}),
+    })
+  }
+  if (phases.length === 0) return undefined
+  // Sort descending by triggerHpPct (highest threshold fires first)
+  phases.sort((a, b) => b.triggerHpPct - a.triggerHpPct)
+  return phases
 }
 
 /** Pure trust boundary: validate/clamp a raw model payload into a QuestBlueprint. */
@@ -77,6 +144,8 @@ export function coerceQuest(
       physResist: canon?.physResist,
       // Default ladder: the FINAL encounter of a quest is the boss; earlier ones elites.
       archetype: canon?.archetype ?? mArch ?? (i === total - 1 ? 'boss' : 'elite'),
+      // §26 — pass through authored phases (trust boundary: clamp + validate)
+      phases: coercePhases(e.phases),
     }
   })
   if (encounters.length < 2) throw new AIError('parse', '生成的遭遇数量不足')

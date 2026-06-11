@@ -620,6 +620,31 @@ input, select, textarea { font-family: inherit; }
 .intel-chip.resist { border-color: #7f8bd6; color: #9aa4e0; }
 @keyframes floatUp { 0% { opacity: 0; transform: translate(-50%, 10px); } 20% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -46px); } }
 
+/* §26 status chips — small icon+roundsLeft badge row on battle sprites and enemy cards. */
+.status-chip-row { display: flex; gap: 3px; flex-wrap: wrap; justify-content: center; margin-top: 3px; }
+.status-chip {
+  font-size: 10px; line-height: 1; padding: 2px 4px; border-radius: 4px;
+  border: 1px solid rgba(216, 178, 90, 0.55); background: rgba(10, 14, 40, 0.78);
+  color: var(--ink-dim); cursor: default;
+}
+/* §26 boss phase badge — deep mode only; uses the same intel-chip visual language, styled warning. */
+.phase-badge {
+  display: inline-block; margin-top: 3px;
+  font-family: var(--font-pixel); font-size: 10px; color: #ffd84d;
+  background: rgba(64, 18, 18, 0.88); border: 1px solid #ff7a4d; border-radius: 5px;
+  padding: 2px 5px; text-shadow: 1px 1px 0 var(--outline);
+}
+/* §26 TurnPicker silence hint — inline text replacing skill buttons when silenced. */
+.skill-btn-silence-hint {
+  font-size: 11px; color: var(--hp); align-self: center; padding: 0 4px; cursor: default;
+}
+/* §26 SettingsModal toggle row — a checkbox+label pair matching the existing .field layout. */
+.setting-toggle-label {
+  display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none;
+  font-size: 14px; color: var(--ink);
+}
+.setting-toggle-cb { accent-color: var(--gold); width: 16px; height: 16px; cursor: pointer; }
+
 /* ---------- Companion card ---------- */
 .companion-card { display: flex; gap: 15px; }
 .portrait {

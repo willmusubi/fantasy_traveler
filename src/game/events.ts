@@ -12,6 +12,7 @@ export type DomainEvent =
   | { type: 'FocusStreak'; days: number }
   | { type: 'DialogueInteraction'; characterId: ID }
   // Interactive (FF-style) combat round, driven by the RoundResolver overlay.
+  // §26: `choice` also accepts the GUARD_ACTION sentinel ('guard' — the 防御 stance).
   | { type: 'RoundBegan'; todo: Todo }
   | { type: 'RoundAdvanced'; choice?: SkillId | 'basic'; auto?: boolean; targetId?: ID }
   // Script branching (§23): the player picked a post-boss option in the ScriptChoiceModal.

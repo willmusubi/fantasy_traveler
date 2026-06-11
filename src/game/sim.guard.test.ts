@@ -3,7 +3,7 @@
 // handful of REAL tasks, at every level), this fails before any player feels it.
 
 import { describe, expect, it } from 'vitest'
-import { summarize } from './simulator'
+import { summarize, summarizeSpec } from './simulator'
 
 const LEVELS = [1, 30, 60] // bounded-growth checkpoints (MAX_LEVEL horizon)
 
@@ -43,6 +43,29 @@ describe('§25 pacing anchors (seeded montecarlo)', () => {
       expect(s.wipeRate, `L${lv} elite wipes`).toBeLessThanOrEqual(0.1)
       const b = summarize(lv, 'boss', false, 120)
       expect(b.wipeRate, `L${lv} boss wipes`).toBeLessThanOrEqual(0.5)
+    }
+  })
+})
+
+describe('§26 sim extensions', () => {
+  it('(a) boss with sleepRounds:2 has strictly lower mean TTK than baseline boss (high-wipe scenario)', () => {
+    // poolScale:0.3 simulates a fragile-party scenario where the boss causes frequent wipes
+    // (each wipe heals the boss 30%, extending TTK).  Preventing 2 rounds of enemy attacks via
+    // sleep reliably reduces wipes → lower mean TTK.  300 runs stabilises the estimate.
+    for (const lv of LEVELS) {
+      const base = summarizeSpec({ level: lv, archetype: 'boss', exploit: false, poolScale: 0.3 }, 300)
+      const slept = summarizeSpec({ level: lv, archetype: 'boss', exploit: false, sleepRounds: 2, poolScale: 0.3 }, 300)
+      expect(slept.mean, `L${lv} sleep-2 TTK`).toBeLessThan(base.mean)
+    }
+  })
+
+  it('(b) boss with 0.5-phase atkBoost+10 has mean TTK within ±1 round of baseline AND wipeRate >= baseline', () => {
+    const phased = [{ triggerHpPct: 0.5, atkBoost: 10 }]
+    for (const lv of LEVELS) {
+      const base = summarize(lv, 'boss', false, 120)
+      const boosted = summarizeSpec({ level: lv, archetype: 'boss', exploit: false, phases: phased }, 120)
+      expect(Math.abs(boosted.mean - base.mean), `L${lv} phase TTK delta`).toBeLessThanOrEqual(1)
+      expect(boosted.wipeRate, `L${lv} phase wipeRate >= baseline`).toBeGreaterThanOrEqual(base.wipeRate)
     }
   })
 })

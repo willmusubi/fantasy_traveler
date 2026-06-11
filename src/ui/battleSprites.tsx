@@ -4,7 +4,8 @@
 // public emoji cast still works, and dropping in art upgrades the stage with no code change.
 
 import { useState } from 'react'
-import type { CharResource, Character, ClassId, Monster } from '../domain/types'
+import { STATUS_META } from '../domain/config'
+import type { CharResource, Character, ClassId, CombatStatus, Monster } from '../domain/types'
 import { t } from '../i18n'
 
 // Player sprite is class-flavored; companions use a friendly face.
@@ -39,6 +40,7 @@ export function BattleSprite({
   charge,
   plan,
   active,
+  statuses,
 }: {
   char: Character
   isPlayer: boolean
@@ -47,6 +49,8 @@ export function BattleSprite({
   plan?: string
   /** Highlight this sprite as the one currently choosing an action (RoundResolver). */
   active?: boolean
+  /** Active status effects on this character. */
+  statuses?: CombatStatus[]
 }) {
   const downed = res.hp <= 0
   const emoji = downed ? '💫' : isPlayer ? CLASS_EMOJI[char.classId] ?? '⚔️' : '🙂'
@@ -82,6 +86,23 @@ export function BattleSprite({
         <MiniBar value={res.mp} max={char.stats.maxMp} cls="mp" />
         <MiniBar value={Math.min(charge, 100)} max={100} cls="ct" />
       </div>
+      {statuses && statuses.length > 0 && (
+        <div className="status-chip-row" aria-label="状态">
+          {statuses.map((s) => {
+            const meta = STATUS_META[s.kind]
+            return (
+              <span
+                key={s.id}
+                className="status-chip"
+                title={`${meta?.label ?? s.kind}（剩余 ${s.roundsLeft} 回合）`}
+                aria-label={`${meta?.label ?? s.kind} ${s.roundsLeft}回合`}
+              >
+                {meta?.icon ?? '?'}{s.roundsLeft}
+              </span>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
@@ -99,6 +120,7 @@ export function EnemyCard({
   active,
   onSelect,
   deepIntel,
+  statuses,
 }: {
   enemy: Monster
   inQuest: boolean
@@ -111,6 +133,8 @@ export function EnemyCard({
   onSelect?: (id: string) => void
   /** §25 deep mode: surface weakness/element intel chips. */
   deepIntel?: boolean
+  /** Active status effects on this enemy. */
+  statuses?: CombatStatus[]
 }) {
   const name = enemy.displayName ?? t(enemy.nameKey)
   const downed = enemy.hp <= 0
@@ -166,6 +190,31 @@ export function EnemyCard({
         <div className={`hpbar-fill ${low ? 'low' : ''}`} style={{ width: `${pct}%` }} />
         <div className="hpbar-label">{downed ? '已击败' : `${enemy.hp} / ${enemy.maxHp}`}</div>
       </div>
+      {statuses && statuses.length > 0 && (
+        <div className="status-chip-row" aria-label="状态">
+          {statuses.map((s) => {
+            const meta = STATUS_META[s.kind]
+            return (
+              <span
+                key={s.id}
+                className="status-chip"
+                title={`${meta?.label ?? s.kind}（剩余 ${s.roundsLeft} 回合）`}
+                aria-label={`${meta?.label ?? s.kind} ${s.roundsLeft}回合`}
+              >
+                {meta?.icon ?? '?'}{s.roundsLeft}
+              </span>
+            )
+          })}
+        </div>
+      )}
+      {deepIntel && !downed && enemy.phases && (enemy.phaseIdx ?? 0) > 0 && (() => {
+        const lastPhase = enemy.phases[(enemy.phaseIdx ?? 0) - 1]
+        return lastPhase?.phaseLabel ? (
+          <div className="phase-badge" aria-label={`当前阶段：${lastPhase.phaseLabel}`}>
+            ⚠{lastPhase.phaseLabel}
+          </div>
+        ) : null
+      })()}
     </div>
   )
 }

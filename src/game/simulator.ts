@@ -31,6 +31,15 @@ export interface FightSpec {
   exploit: boolean
   seed: number
   maxRounds?: number
+  /** Enemy skips its swing AND patternIdx is frozen for the first N rounds (models a sleep window). */
+  sleepRounds?: number
+  /** Boss phase transitions: models atkBoost + pattern swap when hp crosses a threshold.
+   *  Authored DESCENDING by triggerHpPct — same ordering contract as BossPhase[]. */
+  phases?: { triggerHpPct: number; atkBoost?: number; newPattern?: { kind: 'attack' | 'heavy'; mult?: number; telegraph?: boolean }[] }[]
+  /** Scale the party pool down (0 < x ≤ 1) to simulate a punishing difficulty tier where
+   *  wipes become likely.  Default 1 (no change). Useful in test scenarios that need sleep to
+   *  have a measurable TTK impact. */
+  poolScale?: number
 }
 
 export interface FightResult {
@@ -64,11 +73,17 @@ export function simulateFight(spec: FightSpec): FightResult {
     const s = statsForProfileAtLevel(m.profile, spec.level)
     return { ...s, str: s.str + m.weaponStr }
   })
-  const maxPool = members.reduce((sum, s) => sum + s.maxHp, 0)
+  const maxPool = Math.round(members.reduce((sum, s) => sum + s.maxHp, 0) * (spec.poolScale ?? 1))
   let pool = maxPool
   let hp = enemy.maxHp
   let wipes = 0
   let patternIdx = 0
+  let enemyAtk = enemy.atk
+  // Phase tracking: work from a sorted-descending copy; fired phases are removed.
+  const pendingPhases = spec.phases
+    ? [...spec.phases].sort((a, b) => b.triggerHpPct - a.triggerHpPct)
+    : []
+  let activePattern: { kind: 'attack' | 'heavy'; mult?: number }[] = enemy.pattern ?? [{ kind: 'attack' as const }]
 
   for (let round = 1; round <= maxRounds; round++) {
     // Party: one basic attack per member (med priority), best offensive stat.
@@ -89,33 +104,46 @@ export function simulateFight(spec: FightSpec): FightResult {
         roll,
       })
       hp -= out.dmg
+      // Check phase transitions after each damaging hit (mirrors checkBossPhases).
+      while (pendingPhases.length > 0 && hp > 0 && hp / enemy.maxHp <= pendingPhases[0].triggerHpPct) {
+        const phase = pendingPhases.shift()!
+        if (phase.atkBoost) enemyAtk += phase.atkBoost
+        if (phase.newPattern && phase.newPattern.length > 0) {
+          activePattern = phase.newPattern.map((m) => ({ kind: m.kind, ...(m.mult !== undefined ? { mult: m.mult } : {}) }))
+          patternIdx = 0
+        }
+      }
       if (hp <= 0) return { rounds: round, wipes, killed: true }
     }
 
     // Enemy: next rotation move against the pool (sturdiest-member vit as the soak).
-    const pattern = enemy.pattern ?? [{ kind: 'attack' as const }]
-    const move = pattern[patternIdx % pattern.length]
-    patternIdx++
+    // During the sleep window: patternIdx is frozen AND the attack resolves to 0 damage.
+    // RNG is still consumed to keep downstream sequences comparable (avoids artifactual TTK inversions).
+    const sleeping = spec.sleepRounds !== undefined && round <= spec.sleepRounds
+    const move = activePattern[patternIdx % activePattern.length]
+    if (!sleeping) patternIdx++ // sleep freezes the rotation index
     const mult = move.mult ?? 1
     const sturdyVit = Math.max(...members.map((s) => s.vit))
     const hitOut = rollDamage({
-      pow: enemy.atk * 1.25,
+      pow: enemyAtk * 1.25,
       power: mult,
       def: sturdyVit,
       attackerHit: enemy.hit ?? ENEMY_HIT(stage),
       targetEva: members[0].eva,
       roll, // enemies never crit (no skl)
     })
-    let dmg = hitOut.dmg
-    if (spec.archetype === 'boss' && move.kind === 'heavy' && mult >= 2) {
-      dmg = Math.min(dmg, Math.round(pool * BOSS_HEAVY_POOL_CAP)) // §25 heavy cap
-    }
-    pool -= dmg
-    if (pool <= 0) {
-      wipes++
-      pool = Math.round(maxPool * 0.4)
-      hp = Math.min(enemy.maxHp, Math.round(hp + enemy.maxHp * 0.3))
-      patternIdx = 0 // §25: rotation resets off the heavy slot on a wipe
+    if (!sleeping) {
+      let dmg = hitOut.dmg
+      if (spec.archetype === 'boss' && move.kind === 'heavy' && mult >= 2) {
+        dmg = Math.min(dmg, Math.round(pool * BOSS_HEAVY_POOL_CAP)) // §25 heavy cap
+      }
+      pool -= dmg
+      if (pool <= 0) {
+        wipes++
+        pool = Math.round(maxPool * 0.4)
+        hp = Math.min(enemy.maxHp, Math.round(hp + enemy.maxHp * 0.3))
+        patternIdx = 0 // §25: rotation resets off the heavy slot on a wipe
+      }
     }
   }
   return { rounds: maxRounds, wipes, killed: false }
@@ -136,6 +164,29 @@ export function summarize(
   let kills = 0
   for (let i = 0; i < runs; i++) {
     const r = simulateFight({ level, archetype, exploit, seed: seedBase + i * 7919 })
+    rounds.push(r.rounds)
+    if (r.wipes > 0) wipes++
+    if (r.killed) kills++
+  }
+  rounds.sort((a, b) => a - b)
+  return {
+    mean: rounds.reduce((s, x) => s + x, 0) / runs,
+    p90: rounds[Math.floor(runs * 0.9)],
+    wipeRate: wipes / runs,
+    killRate: kills / runs,
+  }
+}
+
+/** Like summarize but accepts a full FightSpec overlay for the additive sim extensions
+ *  (sleepRounds, phases, etc.). Default behavior is byte-identical to summarize(). */
+export function summarizeSpec(
+  base: Omit<FightSpec, 'seed'>, runs = 200, seedBase = 1,
+): Summary {
+  const rounds: number[] = []
+  let wipes = 0
+  let kills = 0
+  for (let i = 0; i < runs; i++) {
+    const r = simulateFight({ ...base, seed: seedBase + i * 7919 })
     rounds.push(r.rounds)
     if (r.wipes > 0) wipes++
     if (r.killed) kills++

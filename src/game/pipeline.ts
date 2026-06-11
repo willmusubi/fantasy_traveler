@@ -18,7 +18,7 @@ import { scriptDefFor } from '../world/worlds'
 import type { DomainEvent } from './events'
 import { gameReducer, type ReducerResult } from './reducer'
 
-const TX_STORES = ['gameState', 'affinity', 'characters', 'todos', 'quests'] as const
+const TX_STORES = ['gameState', 'affinity', 'characters', 'todos', 'quests', 'settings'] as const
 
 function newId(): string {
   return crypto.randomUUID()
@@ -60,6 +60,10 @@ export async function dispatchEvent(
   const characters = (await charStore.getAll()).map(withStatsDefaults)
   const affList = await affStore.getAll()
   const todos = await todoStore.getAll()
+  // §26 smart auto tactics: opt-in via Settings.autoTactics (the settings store backfills it
+  // to true for app users; raw fixtures/tests without a settings record stay 'plain').
+  const settings = await tx.objectStore('settings').get(SINGLETON)
+  const tactics = settings?.autoTactics === true ? ('smart' as const) : ('plain' as const)
   const quest = gameState.activeQuestId ? await questStore.get(gameState.activeQuestId) : undefined
   // §23: the active branching script (resolved from content), threaded into the pure reducer so it
   // can read chapter transitions; also used below to materialize the next chapter on advance.
@@ -85,6 +89,7 @@ export async function dispatchEvent(
       now: new Date(),
       newId,
       roll: Math.random, // §25: live RNG enters ONLY here — the reducer stays pure
+      tactics, // §26 smart auto tactics (Settings.autoTactics)
       openHighCount,
       ownedEquipment: gameState.ownedEquipment ?? [],
       activeSynergies,

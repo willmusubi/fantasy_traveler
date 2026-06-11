@@ -127,6 +127,7 @@ export function withGameStateDefaults(s: GameState): GameState {
     combatLog: s.combatLog ?? [],
     charge: s.charge ?? {}, // persistent CTB gauges; missing entry = 0
     roundPlan: s.roundPlan ?? {}, // per-member planned action; missing entry = basic attack
+    activeStatuses: s.activeStatuses ?? {}, // §26 — pre-status saves carry none
     enemies,
     monster: undefined, // collapse the legacy field so nothing reads it post-migration
     activeRound: staleRound ? undefined : ar,

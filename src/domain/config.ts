@@ -1,7 +1,7 @@
 // Tunable game-balance constants. All in ONE place (§7, §21, §25) so the economy is
 // easy to retune and unit tests reference the same source of truth.
 
-import type { ClassId, Element, EnemyArchetype, EnemyMove, PartyBuff, PhysKind, Priority, StatProfile, WeaponKind } from './types'
+import type { ClassId, Element, EnemyArchetype, EnemyMove, PartyBuff, PhysKind, Priority, StatProfile, StatusKind, WeaponKind } from './types'
 
 // ---------- XP / leveling ----------
 
@@ -139,6 +139,39 @@ export const WIPE_MONSTER_HEAL_PCT = 0.3
 export const SKILL_ATK_MULT = 3
 export const SKILL_HEAL_MULT = 2.5 // §25: up from 2.2 vs the larger HP pools/heavier hits
 export const SKILL_BUFF_TURNS = 3
+
+// ---------- §26 status effects / guard / smart tactics ----------
+
+/** DOT/HOT default magnitude as a fraction of the TARGET's maxHp per round. Resolved to a
+ *  FLAT amount at application time (an explicit StatusEffectSpec.magnitude overrides). */
+export const STATUS_DOT_PCT: Partial<Record<StatusKind, number>> = {
+  poison: 0.05,
+  burn: 0.06,
+  regen: 0.06,
+}
+/** slow's default spd cut when unauthored (0.3 = −30%). */
+export const SLOW_DEFAULT_PCT = 0.3
+/** 防御 stance: incoming enemy TURN damage × (1 − this) while guarding. Penalty hits
+ *  (overdue/timer — dealToParty) ignore guard: a real-life punishment never whiffs. */
+export const GUARD_DAMAGE_REDUCTION = 0.5
+/** The reserved roundPlan/choice sentinel for the 防御 stance (not a real skill id). */
+export const GUARD_ACTION = 'guard'
+/** Smart tactics (§26): auto-guard when a member's HP falls below this fraction… */
+export const SMART_GUARD_HP_PCT = 0.3
+/** …and auto-heal when any ally falls below this fraction (healers act first on it). */
+export const SMART_HEAL_HP_PCT = 0.45
+
+/** Display meta per status kind — battle HUD chips + combat log share it. */
+export const STATUS_META: Record<StatusKind, { label: string; icon: string }> = {
+  poison: { label: '中毒', icon: '☠' },
+  burn: { label: '灼烧', icon: '🔥' },
+  regen: { label: '再生', icon: '🌿' },
+  sleep: { label: '睡眠', icon: '💤' },
+  paralysis: { label: '麻痹', icon: '⚡' },
+  silence: { label: '沉默', icon: '🤐' },
+  slow: { label: '迟缓', icon: '🐌' },
+  guard: { label: '防御', icon: '🛡' },
+}
 
 // ---------- Speed: persistent charge-time battle (CTB) ----------
 // Speed drives a PERSISTENT turn-order timeline. Every combatant has a charge gauge that fills
