@@ -374,7 +374,7 @@ function enemyStrike(t: Turn, attacker: Monster, ctx: CombatContext): void {
     dmg = Math.max(1, Math.round(dmg * (1 - GUARD_DAMAGE_REDUCTION)))
   }
   if (out.missed) {
-    t.effects.push({ type: 'enemyAttack', targetId: target.id, amount: 0, missed: true })
+    t.effects.push({ type: 'enemyAttack', targetId: target.id, amount: 0, missed: true, enemyId: attacker.id })
     // §28 见切反击: a dodger with the counter passive ripostes at COUNTER_POWER_PCT.
     if (hasTalentPassive(target, t.gs.learnedTalents, 'counter')) {
       const wk = attackKindOf(target, ctx)
@@ -405,7 +405,7 @@ function enemyStrike(t: Turn, attacker: Monster, ctx: CombatContext): void {
     const r = rOf(t, target)
     const hpAfter = Math.max(0, r.hp - dmg)
     setR(t, target, { ...r, hp: hpAfter })
-    t.effects.push({ type: 'enemyAttack', targetId: target.id, amount: dmg, heavy: move.kind === 'heavy' || undefined })
+    t.effects.push({ type: 'enemyAttack', targetId: target.id, amount: dmg, heavy: move.kind === 'heavy' || undefined, enemyId: attacker.id })
     if (hpAfter <= 0) {
       shedStatuses(t, target.id) // §26 death cleanse
       t.effects.push({ type: 'downed', characterId: target.id })

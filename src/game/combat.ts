@@ -209,6 +209,8 @@ export function spawnMonster(
     pattern: ARCHETYPE_PATTERNS[archetype].map((m) => ({ ...m })),
     patternIdx: 0,
     growth: 1,
+    // §32 — the open-world training demon's figure art key (quest enemies override or clear it).
+    artSet: 'procrastination',
   }
 }
 
@@ -237,6 +239,9 @@ export function monsterFromEncounter(
     // §26 — authored phase transitions (primary bosses; escorts never carry them).
     phases: enc.phases?.map((p) => ({ ...p, newPattern: p.newPattern?.map((mv) => ({ ...mv })) })),
     phaseIdx: enc.phases ? 0 : undefined,
+    // §32 — figure art key: authored override, else the canon antagonist id (canon enemies get
+    // art for free once /sprites/enemies/<antagonistId>.png exists). AI-only enemies stay emoji.
+    artSet: enc.artSet ?? enc.antagonistId,
   }
 }
 
@@ -258,6 +263,9 @@ export function teamFromEncounter(
         hpScale: a.hpScale, defScale: a.defScale,
         element: a.element, physWeak: a.physWeak, physResist: a.physResist,
         archetype: a.archetype ?? 'mook',
+        // Escorts must not inherit the PRIMARY's spread-through fields:
+        phases: undefined, // §26 documented intent — escorts never carry phases
+        artSet: a.artSet, // §32 — an add's art is its own (fallback to ITS antagonistId)
       },
       storyStage,
       openHighCount,

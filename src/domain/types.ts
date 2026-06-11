@@ -344,6 +344,9 @@ export interface Monster {
   phases?: BossPhase[]
   /** §26 — how many phases have fired (default 0). Survives saves so a flip never re-fires. */
   phaseIdx?: number
+  /** §32 — battle-figure art key (/sprites/enemies/<artSet>.png). Defaults to the antagonist id
+   *  at spawn; absent (old saves / unkeyed AI enemies) = emoji figure. */
+  artSet?: string
 }
 
 // ---------- World / Quest (§22) ----------
@@ -437,6 +440,9 @@ export interface EncounterSpec {
   archetype?: EnemyArchetype
   /** §26 — phase transitions for the PRIMARY enemy (clamped on coerce; escorts never get phases). */
   phases?: BossPhase[]
+  /** §32 — battle-figure art key override. Unauthored → the antagonist id (canon enemies get art
+   *  for free once a file lands at /sprites/enemies/<antagonistId>.png). */
+  artSet?: string
 }
 
 /** One escort enemy in a team encounter (the primary's fields live on EncounterSpec). */
@@ -450,6 +456,8 @@ export interface EncounterAdd {
   physWeak?: PhysKind[]
   physResist?: PhysKind[]
   archetype?: EnemyArchetype
+  /** §32 — battle-figure art key override (see EncounterSpec.artSet). */
+  artSet?: string
 }
 
 export interface QuestReward {
@@ -617,7 +625,7 @@ export type GameEffect =
   // Active combat (skills / enemy turn-attacks / resources)
   | { type: 'skillCast'; skillId: SkillId; casterId: ID; skillKind: 'attack' | 'heal' | 'buff' | 'debuff'; amount: number; monsterHpAfter?: number; targetId?: ID; missed?: boolean; crit?: boolean; typeMult?: number }
   | { type: 'heal'; targetId: ID; amount: number }
-  | { type: 'enemyAttack'; targetId: ID; amount: number; missed?: boolean; heavy?: boolean }
+  | { type: 'enemyAttack'; targetId: ID; amount: number; missed?: boolean; heavy?: boolean; enemyId?: ID } // §32 enemyId = the striker (absent on sourceless penalty hits)
   // §25: the enemy's NEXT move is a telegraphed wind-up (HUD warning banner).
   | { type: 'enemyTelegraph'; enemyId: ID; text: string }
   | { type: 'downed'; characterId: ID }
