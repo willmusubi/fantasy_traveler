@@ -9,7 +9,7 @@ interface SettingsStore {
   update: (patch: Partial<Settings>) => Promise<void>
 }
 
-const DEFAULTS: Settings = { model: 'claude-sonnet-4-6', language: 'zh-CN', theme: 'dusk', combatDepth: 'simple', autoTactics: true }
+const DEFAULTS: Settings = { model: 'claude-sonnet-4-6', language: 'zh-CN', theme: 'dusk', combatDepth: 'simple', autoTactics: true, battleFx: true, sfxVolume: 70 }
 
 /** §25 helper: deep-mode UI surfaces on? (missing field on old saves = simple). */
 export function isDeepCombat(s: Settings): boolean {
@@ -21,8 +21,13 @@ export const useSettings = create<SettingsStore>((set, get) => ({
   loaded: false,
   async hydrate() {
     const raw = await settingsRepo.get()
-    // §26: backfill autoTactics for old saves that predate this field.
-    const settings: Settings = { ...raw, autoTactics: raw.autoTactics ?? true }
+    // §26/§27: backfill fields old saves predate.
+    const settings: Settings = {
+      ...raw,
+      autoTactics: raw.autoTactics ?? true,
+      battleFx: raw.battleFx ?? true,
+      sfxVolume: raw.sfxVolume ?? 70,
+    }
     set({ settings, loaded: true })
   },
   async update(patch) {

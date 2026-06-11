@@ -13,6 +13,7 @@ import type { ReducerResult } from '../game/reducer'
 import { t } from '../i18n'
 import { EQUIPMENT_DEFS } from '../world/equipment'
 import { SHOP_POTIONS } from '../world/shop'
+import { publishBattleFX } from '../ui/fx/battleFXBus'
 import { registerRuntimeScript, scriptDefFor } from '../world/worlds'
 import { useSettings } from './settingsStore'
 import { fireCompletionReaction, useTodos } from './todoStore'
@@ -264,6 +265,7 @@ export const useGame = create<GameStore>((set, get) => ({
   },
 
   ingestResult(result) {
+    publishBattleFX(result.effects) // §27 — the FX overlay (particles/shake/SFX) feeds off every dispatch
     const prev = get()
     const characters = prev.characters.map((c) =>
       result.characterStats[c.id] ? { ...c, stats: result.characterStats[c.id] } : c,

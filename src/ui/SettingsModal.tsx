@@ -168,6 +168,39 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
+        <div className="field">
+          <label className="setting-toggle-label" htmlFor="setting-battle-fx">
+            <input
+              id="setting-battle-fx"
+              type="checkbox"
+              className="setting-toggle-cb"
+              checked={settings.battleFx !== false}
+              onChange={(e) => void update({ battleFx: e.target.checked })}
+            />
+            <span>战斗特效</span>
+          </label>
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, lineHeight: 1.6 }}>
+            打击粒子、屏幕震动与闪光。低配设备或不想被打扰时可关闭；系统「减少动态效果」设置始终优先。
+          </div>
+        </div>
+
+        <div className="field">
+          <label htmlFor="setting-sfx-volume">音效音量（{settings.sfxVolume ?? 70}）</label>
+          <input
+            id="setting-sfx-volume"
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={settings.sfxVolume ?? 70}
+            onChange={(e) => void update({ sfxVolume: Number(e.target.value) })}
+            style={{ width: '100%' }}
+          />
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, lineHeight: 1.6 }}>
+            像素风合成音效（命中/会心/治疗/胜利……）。调到 0 即静音。
+          </div>
+        </div>
+
         <p className="disclosure">
           🔒 你的 Key 只保存在本机浏览器（IndexedDB），不会上传到任何服务器；对话直接从你的浏览器发往
           Anthropic。这适合个人测试使用。

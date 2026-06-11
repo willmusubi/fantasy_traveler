@@ -12,6 +12,7 @@ import { activeSynergiesFor } from '../world/relationships'
 import { FIRST_WORLD_ID, scriptDefFor, WORLD_DEFS } from '../world/worlds'
 import { BattleSprite, CLASS_EMOJI, EnemyCard, enemyEmoji } from './battleSprites'
 import { DefaultActionsModal } from './DefaultActionsModal'
+import { BattleCanvas } from './fx/BattleCanvas'
 import { TurnPicker } from './TurnPicker'
 
 // Fallback names for buffs without a label (e.g. skill atk buffs).
@@ -119,6 +120,7 @@ export function MonsterHUD() {
       <div className="stage-scene">
         <div className="stage-sky" aria-hidden />
         <div className="stage-ground" aria-hidden />
+        <BattleCanvas /> {/* §27 FX overlay — particles/shake/SFX, above the DOM sprites */}
 
         <div className="party-side">
           {player && <BattleSprite char={player} isPlayer res={resourceOf(gs, player)} charge={gs.charge[player.id] ?? 0} plan={gs.activeRound ? undefined : planLabel(player)} active={activeId === player.id} statuses={gs.activeStatuses?.[player.id]} />}

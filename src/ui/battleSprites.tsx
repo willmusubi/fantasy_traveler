@@ -60,7 +60,7 @@ export function BattleSprite({
   const [failed, setFailed] = useState<Set<string>>(() => new Set())
   const artSrc = candidates.find((c) => !failed.has(c))
   return (
-    <div className={`bsprite ${downed ? 'downed' : ''} ${active ? 'acting' : ''}`}>
+    <div className={`bsprite ${downed ? 'downed' : ''} ${active ? 'acting' : ''}`} data-fx-anchor={char.id}>
       {!downed && plan && <div className="bsprite-action" title="这一回合的行动">{plan}</div>}
       {artSrc ? (
         <div className="bsprite-body has-art" aria-hidden>
@@ -147,6 +147,7 @@ export function EnemyCard({
   return (
     <div
       className={`enemy-card ${downed ? 'defeated' : ''} ${isTarget ? 'current-target' : ''} ${active ? 'acting' : ''} ${clickable ? 'selectable' : ''}`}
+      data-fx-anchor={enemy.id}
       onClick={clickable ? () => onSelect?.(enemy.id) : undefined}
       role={clickable ? 'button' : undefined}
       aria-pressed={clickable ? Boolean(isTarget) : undefined}

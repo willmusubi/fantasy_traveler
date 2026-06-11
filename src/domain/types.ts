@@ -712,6 +712,11 @@ export interface Settings {
    *  burst a sleeping enemy — so light players are never asked to micromanage. An explicit
    *  roundPlan/choice always wins. Backfilled to true by the settings store. */
   autoTactics?: boolean
+  /** §27 battle FX overlay (PixiJS particles + screen shake). Default ON; prefers-reduced-motion
+   *  always wins. Off = the DOM battle stage exactly as before. */
+  battleFx?: boolean
+  /** §27 synth SFX volume 0–100 (default 70; 0 = silent). */
+  sfxVolume?: number
 }
 
 // ---------- Save / backup ----------
