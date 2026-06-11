@@ -171,7 +171,32 @@ export const STATUS_META: Record<StatusKind, { label: string; icon: string }> = 
   silence: { label: '沉默', icon: '🤐' },
   slow: { label: '迟缓', icon: '🐌' },
   guard: { label: '防御', icon: '🛡' },
+  taunt: { label: '嘲讽', icon: '🎯' },
 }
+
+// ---------- §28 growth systems ----------
+
+/** A talent point is earned every N levels (lv 5, 10, … MAX_LEVEL → 12 points total). */
+export const TALENT_POINT_EVERY_LEVELS = 5
+/** The 嘲讽 stance: a 1-round status; enemies strike the taunter instead of the sturdiest. */
+export const TAUNT_ACTION = 'taunt'
+/** counter passive: riposte power as a fraction of a basic attack when dodging a turn-hit. */
+export const COUNTER_POWER_PCT = 0.5
+/** mpDiscount passive: skills cost this fraction less MP. */
+export const MP_DISCOUNT_PCT = 0.2
+/** critBonus passive: extra crit chance in percentage points. */
+export const TALENT_CRIT_BONUS = 5
+/** §28 duo techs: combined-stat coefficient share per partner. */
+export const DUO_POW_SHARE = 0.6
+/** Rarity display meta (color tokens live in CSS as .rarity-*). */
+export const RARITY_META: Record<'common' | 'uncommon' | 'rare' | 'epic', { label: string }> = {
+  common: { label: '普通' },
+  uncommon: { label: '精良' },
+  rare: { label: '稀有' },
+  epic: { label: '史诗' },
+}
+/** §28 habit milestones: streak thresholds → reward description (reducer implements). */
+export const HABIT_MILESTONES = [7, 30, 100] as const
 
 // ---------- Speed: persistent charge-time battle (CTB) ----------
 // Speed drives a PERSISTENT turn-order timeline. Every combatant has a charge gauge that fills

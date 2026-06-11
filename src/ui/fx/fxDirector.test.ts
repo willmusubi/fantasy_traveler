@@ -99,3 +99,41 @@ describe('cuesFor — round outcomes', () => {
     expect(cuesFor(effects)).toEqual([])
   })
 })
+
+describe('cuesFor — §28 new effects', () => {
+  it('duoSkillCast → duo cue at the target with flash + light shake + duo SFX', () => {
+    const cues = cuesFor([
+      { type: 'duoSkillCast', skillId: 'xinghuo_yeyu', casterIds: ['mira', 'vela'], amount: 120, targetId: 'm1' },
+    ])
+    expect(cues).toEqual([{ kind: 'duo', anchorId: 'm1', flash: true, shake: 'light', sfx: 'duo' }])
+  })
+
+  it('duoSkillCast without targetId still emits a duo cue (anchorId undefined)', () => {
+    const cues = cuesFor([
+      { type: 'duoSkillCast', skillId: 'yeyu_yuguang', casterIds: ['vela', 'nova'], amount: 80 },
+    ])
+    expect(cues[0]).toMatchObject({ kind: 'duo', sfx: 'duo', flash: true, shake: 'light' })
+    expect(cues[0].anchorId).toBeUndefined()
+  })
+
+  it('counter riposte → skill cue at the target with hit SFX', () => {
+    const cues = cuesFor([
+      { type: 'counter', characterId: 'p', targetId: 'm1', amount: 15 },
+    ])
+    expect(cues).toEqual([{ kind: 'skill', anchorId: 'm1', sfx: 'hit' }])
+  })
+
+  it('habitMilestone → victory cue with levelup SFX', () => {
+    const cues = cuesFor([
+      { type: 'habitMilestone', habitId: 'h1', streak: 7, rewardText: '+1 天赋点' },
+    ])
+    expect(cues).toEqual([{ kind: 'victory', sfx: 'levelup' }])
+  })
+
+  it('talentLearned produces no stage cues (toast owns it)', () => {
+    const effects: GameEffect[] = [
+      { type: 'talentLearned', characterId: 'p', nodeId: 'tv_hp1' },
+    ]
+    expect(cuesFor(effects)).toEqual([])
+  })
+})

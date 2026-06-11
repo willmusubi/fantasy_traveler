@@ -155,6 +155,13 @@ export async function createFxStage(host: HTMLElement): Promise<FxStageHandle> {
       case 'victory': confetti(stage.w, stage.h); break
       case 'wipe': ring(stage.w / 2, stage.h / 2, RED, 0.9); burst(stage.w / 2, stage.h / 2, { color: 0x4a4f66, count: 30, speed: 200 }); break
       case 'levelup': glyphs(x, y - 10, '★', GOLD, 3); rise(x, y, GOLD, 10); break
+      case 'duo':
+        // Double expanding ring (gold + cyan) + 30-particle burst at the anchor.
+        ring(x, y, GOLD, 0.65)
+        ring(x, y, CYAN, 0.5)
+        burst(x, y, { color: GOLD, count: 18, speed: 240 })
+        burst(x, y, { color: CYAN, count: 12, speed: 200 })
+        break
       case 'none': break
     }
   }

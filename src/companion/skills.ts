@@ -5,6 +5,8 @@
 import { LOCAL_PACK } from '../content/localPack'
 import type { Character, Element, PhysKind, SkillId, StatusEffectSpec, StatusKind } from '../domain/types'
 
+export type { DuoSkillDef } from '../domain/types'
+
 export interface SkillDef {
   id: SkillId
   nameKey: string

@@ -10,7 +10,7 @@
 import type { CompanionLines } from '../companion/cannedLines'
 import type { CompanionDef } from '../companion/roster'
 import type { SkillDef } from '../companion/skills'
-import type { ScriptDef } from '../domain/types'
+import type { DuoSkillDef, ScriptDef, TalentNode } from '../domain/types'
 import type { EquipmentDef } from '../world/equipment'
 import type { RelationshipEdge, SynergyDef } from '../world/relationships'
 import type { WorldDef } from '../world/worlds'
@@ -33,6 +33,10 @@ export interface ContentPack {
   i18n?: Record<string, string>
   /** Branching campaign scripts (§23), keyed by script id. */
   scripts?: Record<string, ScriptDef>
+  /** §28 talent trees, keyed by companion id (+ optional 'traveler' for the player). */
+  talents?: Record<string, TalentNode[]>
+  /** §28 羁绊连携技, keyed by duo skill id. */
+  duoSkills?: Record<string, DuoSkillDef>
 }
 
 // Eagerly collect any gitignored local pack(s). With no local dir, Vite returns {} → no override.

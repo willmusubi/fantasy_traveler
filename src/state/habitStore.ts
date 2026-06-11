@@ -6,9 +6,11 @@
 import { create } from 'zustand'
 import { pickCompletionLine, pickWorriedLine } from '../companion/cannedLines'
 import { habitsRepo } from '../data/repositories'
+import { HABIT_MILESTONES } from '../domain/config'
 import { localDateKey } from '../domain/dates'
 import { isStreakBroken, nextStreakOnComplete } from '../domain/habits'
 import type { Habit, RecurrenceRule } from '../domain/types'
+import { dispatchEvent } from '../game/pipeline'
 import { selectPartyCompanions, useGame } from './gameStore'
 
 interface AddInput {
@@ -106,6 +108,12 @@ export const useHabits = create<HabitStore>((set, get) => ({
 
     // First paid check of the day: compute the streak from the PRIOR state, then commit.
     const newStreak = nextStreakOnComplete(habit, now)
+    // §28 milestones: thresholds crossed by THIS check and not yet paid out. Stamped on the
+    // habit BEFORE dispatching, so the game-side reward can never double-fire.
+    const milestonesHit = HABIT_MILESTONES.filter(
+      (m) => newStreak >= m && !(habit.milestoneRewardedAt?.[String(m)]),
+    )
+    const milestoneStamps = Object.fromEntries(milestonesHit.map((m) => [String(m), now.toISOString()]))
     const updated: Habit = {
       ...habit,
       streak: newStreak,
@@ -113,9 +121,16 @@ export const useHabits = create<HabitStore>((set, get) => ({
       lastCompletedOn: today,
       rewardedOn: today,
       lastMissOn: today, // a same-day sweep must not break the streak we just built
+      milestoneRewardedAt: { ...habit.milestoneRewardedAt, ...milestoneStamps },
     }
     await habitsRepo.put(updated)
     set({ habits: get().habits.map((h) => (h.id === id ? updated : h)) })
+
+    // §28 — pay each crossed milestone through the game pipeline (talent points / rare loot).
+    for (const m of milestonesHit) {
+      const result = await dispatchEvent({ type: 'HabitMilestone', habitId: habit.id, streak: m })
+      useGame.getState().ingestResult(result)
+    }
 
     // The reward is a buff draft (NOT a monster attack).
     useGame.getState().offerBuffChoice()

@@ -14,6 +14,7 @@ export interface FxCue {
     | 'skill' | 'heal' | 'buff' | 'debuff'
     | 'status' | 'statusTick' | 'guard' | 'sleepZzz'
     | 'telegraph' | 'phase' | 'downed' | 'victory' | 'wipe' | 'levelup'
+    | 'duo'
     | 'none'
   /** Combatant id whose DOM sprite anchors the burst (data-fx-anchor). Absent = stage center. */
   anchorId?: string
@@ -27,7 +28,7 @@ export interface FxCue {
 const STATUS_COLOR: Record<StatusKind, number> = {
   poison: 0x7ed957, burn: 0xff8a3d, regen: 0x5fd29a,
   sleep: 0x9aa7ff, paralysis: 0xffe14d, silence: 0xc9c9c9, slow: 0x8fd3ff,
-  guard: 0x6fb1ff,
+  guard: 0x6fb1ff, taunt: 0xffb14d,
 }
 
 /** Map one dispatch's effects to an ordered cue list. Pure. */
@@ -98,7 +99,16 @@ export function cuesFor(effects: GameEffect[]): FxCue[] {
       case 'charXp':
         if (e.levelsGained > 0) cues.push({ kind: 'levelup', anchorId: e.characterId, sfx: 'levelup' })
         break
-      // affinity / mood / monsterGrew / equipmentGranted / recruited / script* → toasts/modals
+      case 'duoSkillCast':
+        cues.push({ kind: 'duo', anchorId: e.targetId, flash: true, shake: 'light', sfx: 'duo' })
+        break
+      case 'counter':
+        cues.push({ kind: 'skill', anchorId: e.targetId, sfx: 'hit' })
+        break
+      case 'habitMilestone':
+        cues.push({ kind: 'victory', sfx: 'levelup' })
+        break
+      // affinity / mood / monsterGrew / equipmentGranted / recruited / script* / talentLearned → toasts/modals
       // already carry them; no stage juice.
     }
   }

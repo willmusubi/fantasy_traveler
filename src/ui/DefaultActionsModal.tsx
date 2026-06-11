@@ -2,7 +2,10 @@
 // default action — what the turn picker pre-selects and what ⚡全部自动 / off-screen completions use.
 
 import { unlockedSkills } from '../companion/skills'
-import { GUARD_ACTION } from '../domain/config'
+import { availableDuoSkills } from '../companion/duoSkills'
+import { hasTalentPassive } from '../companion/talents'
+import { COMPANION_DEFS } from '../companion/roster'
+import { GUARD_ACTION, TAUNT_ACTION } from '../domain/config'
 import type { Character } from '../domain/types'
 import { resourceOf } from '../game/resources'
 import { t } from '../i18n'
@@ -12,6 +15,7 @@ import { Modal } from './Modal'
 export function DefaultActionsModal({ onClose }: { onClose: () => void }) {
   const gs = useGame((s) => s.gameState)
   const characters = useGame((s) => s.characters)
+  const affinities = useGame((s) => s.affinities)
   const player = useGame(selectPlayer)
   const setRoundAction = useGame((s) => s.setRoundAction)
   if (!gs) return null
@@ -20,6 +24,9 @@ export function DefaultActionsModal({ onClose }: { onClose: () => void }) {
     .map((id) => characters.find((c) => c.id === id))
     .filter((c): c is Character => c != null && c.kind === 'companion')
   const planParty = [player, ...partyCompanions].filter((c): c is Character => Boolean(c))
+
+  // IDs of companions in the party (for duo availability).
+  const onFieldCompanionIds = partyCompanions.map((c) => c.id)
 
   return (
     <Modal label="默认行动" onClose={onClose} className="plan-modal">
@@ -30,6 +37,8 @@ export function DefaultActionsModal({ onClose }: { onClose: () => void }) {
           const r = resourceOf(gs, c)
           const planned = gs.roundPlan[c.id]
           const skills = unlockedSkills(c)
+          const duos = availableDuoSkills(c.id, onFieldCompanionIds, affinities)
+          const hasTaunt = hasTalentPassive(c, gs.learnedTalents, 'taunt')
           return (
             <div className="plan-row" key={c.id}>
               <span className="plan-row-name">{c.name}</span>
@@ -49,6 +58,16 @@ export function DefaultActionsModal({ onClose }: { onClose: () => void }) {
                 <span className="skill-btn-name">🛡防御</span>
                 <span className="skill-btn-cost">MP0</span>
               </button>
+              {hasTaunt && (
+                <button
+                  className={`skill-btn ${planned === TAUNT_ACTION ? 'selected' : ''}`}
+                  title={`${c.name}：嘲讽——一回合内敌人优先攻击你`}
+                  onClick={() => void setRoundAction(c.id, TAUNT_ACTION)}
+                >
+                  <span className="skill-btn-name">🎯嘲讽</span>
+                  <span className="skill-btn-cost">MP0</span>
+                </button>
+              )}
               {skills.map((skill) => {
                 const affordable = r.mp >= skill.mpCost && (!skill.hpCost || r.hp > skill.hpCost)
                 return (
@@ -63,6 +82,25 @@ export function DefaultActionsModal({ onClose }: { onClose: () => void }) {
                     <span className="skill-btn-cost">
                       MP{skill.mpCost}{skill.hpCost ? `·HP${skill.hpCost}` : ''}
                     </span>
+                  </button>
+                )
+              })}
+              {duos.map((duo) => {
+                const partnerIdInPair = duo.pair[0] === c.id ? duo.pair[1] : duo.pair[0]
+                const partnerName = COMPANION_DEFS[partnerIdInPair]?.name ?? partnerIdInPair
+                const partnerChar = characters.find((ch) => ch.id === partnerIdInPair)
+                const partnerR = partnerChar ? resourceOf(gs, partnerChar) : null
+                const affordable = r.mp >= duo.mpCostEach && (partnerR ? partnerR.mp >= duo.mpCostEach : false)
+                return (
+                  <button
+                    key={duo.id}
+                    className={`skill-btn ${planned === duo.id ? 'selected' : ''}`}
+                    disabled={!affordable && planned !== duo.id}
+                    title={`连携技：${duo.desc}`}
+                    onClick={() => void setRoundAction(c.id, duo.id)}
+                  >
+                    <span className="skill-btn-name">🌟{t(duo.nameKey)} ✕{partnerName}</span>
+                    <span className="skill-btn-cost">MP{duo.mpCostEach}×2</span>
                   </button>
                 )
               })}

@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { WEAPON_CATEGORY } from '../domain/config'
-import type { Character, Stats } from '../domain/types'
+import { WEAPON_CATEGORY, RARITY_META, STATUS_META } from '../domain/config'
+import type { Character, EquipAffix, Stats } from '../domain/types'
 import { effectiveStats } from '../game/effectiveStats'
 import { t } from '../i18n'
 import { useGame } from '../state/gameStore'
@@ -8,6 +8,17 @@ import { activeSynergiesFor } from '../world/relationships'
 import { EQUIPMENT_DEFS } from '../world/equipment'
 
 const SHOWN: (keyof Stats)[] = ['maxHp', 'maxMp', 'str', 'vit', 'wis', 'spr', 'spd', 'skl', 'hit', 'eva']
+
+function affixLines(affixes: EquipAffix[] | undefined): string[] {
+  if (!affixes || affixes.length === 0) return []
+  return affixes.map((a) => {
+    if (a.kind === 'pctStat') return `+${Math.round(a.pct * 100)}% ${t(`stat.${a.stat}`)}`
+    if (a.kind === 'onCritHeal') return `会心时回复 ${a.amount} HP`
+    if (a.kind === 'statusOnHit') return `攻击附加「${STATUS_META[a.status.kind]?.label ?? a.status.kind}」`
+    if (a.kind === 'critBonus') return `会心率 +${a.pct}%`
+    return ''
+  }).filter(Boolean)
+}
 
 function bonusText(defId: string): string {
   const def = EQUIPMENT_DEFS[defId]
@@ -76,29 +87,49 @@ export function EquipmentPanel() {
       <div className="gear-section-label">已装备</div>
       <div className="gear-list">
         {equipped.length === 0 && <div className="gear-empty">还没有装备</div>}
-        {equipped.map((e) => (
-          <div key={e.instanceId} className="gear-row">
-            <span className="gear-slot">{t(`slot.${EQUIPMENT_DEFS[e.defId]?.slot ?? 'trinket'}`)}</span>
-            <span className="gear-name">{t(EQUIPMENT_DEFS[e.defId]?.nameKey ?? e.defId)}</span>
-            <span className="gear-bonus">{bonusText(e.defId)}</span>
-            <button className="btn btn-ghost gear-btn" onClick={() => unequip(e.instanceId)}>卸下</button>
-          </div>
-        ))}
+        {equipped.map((e) => {
+          const def = EQUIPMENT_DEFS[e.defId]
+          const rarity = def?.rarity ?? 'common'
+          const rarityMeta = RARITY_META[rarity]
+          const affixes = affixLines(def?.affixes)
+          return (
+            <div key={e.instanceId} className="gear-row">
+              <span className="gear-slot">{t(`slot.${def?.slot ?? 'trinket'}`)}</span>
+              <span className={`gear-name rarity-${rarity}`}>
+                {t(def?.nameKey ?? e.defId)}
+                {rarity !== 'common' && <span className="rarity-chip">{rarityMeta.label}</span>}
+              </span>
+              <span className="gear-bonus">{bonusText(e.defId)}</span>
+              {affixes.map((line, i) => <span key={i} className="gear-affix">{line}</span>)}
+              <button className="btn btn-ghost gear-btn" onClick={() => unequip(e.instanceId)}>卸下</button>
+            </div>
+          )
+        })}
       </div>
 
       <div className="gear-section-label">背包</div>
       <div className="gear-list">
         {stash.length === 0 && <div className="gear-empty">背包是空的，去副本里夺取战利品吧</div>}
-        {stash.map((e) => (
-          <div key={e.instanceId} className="gear-row">
-            <span className="gear-slot">{t(`slot.${EQUIPMENT_DEFS[e.defId]?.slot ?? 'trinket'}`)}</span>
-            <span className="gear-name">{t(EQUIPMENT_DEFS[e.defId]?.nameKey ?? e.defId)}</span>
-            <span className="gear-bonus">{bonusText(e.defId)}</span>
-            <button className="btn gear-btn" onClick={() => equip(e.instanceId, selected.id)}>
-              装备
-            </button>
-          </div>
-        ))}
+        {stash.map((e) => {
+          const def = EQUIPMENT_DEFS[e.defId]
+          const rarity = def?.rarity ?? 'common'
+          const rarityMeta = RARITY_META[rarity]
+          const affixes = affixLines(def?.affixes)
+          return (
+            <div key={e.instanceId} className="gear-row">
+              <span className="gear-slot">{t(`slot.${def?.slot ?? 'trinket'}`)}</span>
+              <span className={`gear-name rarity-${rarity}`}>
+                {t(def?.nameKey ?? e.defId)}
+                {rarity !== 'common' && <span className="rarity-chip">{rarityMeta.label}</span>}
+              </span>
+              <span className="gear-bonus">{bonusText(e.defId)}</span>
+              {affixes.map((line, i) => <span key={i} className="gear-affix">{line}</span>)}
+              <button className="btn gear-btn" onClick={() => equip(e.instanceId, selected.id)}>
+                装备
+              </button>
+            </div>
+          )
+        })}
       </div>
     </div>
   )

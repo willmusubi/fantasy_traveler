@@ -5,7 +5,10 @@
 
 import { useEffect } from 'react'
 import { SKILL_DEFS, unlockedSkills } from '../companion/skills'
-import { GUARD_ACTION } from '../domain/config'
+import { availableDuoSkills } from '../companion/duoSkills'
+import { hasTalentPassive } from '../companion/talents'
+import { COMPANION_DEFS } from '../companion/roster'
+import { GUARD_ACTION, TAUNT_ACTION } from '../domain/config'
 import type { SkillId } from '../domain/types'
 import { autoTargetEnemy, livingEnemies } from '../game/combat'
 import { hasStatus } from '../game/status'
@@ -16,6 +19,7 @@ import { useGame } from '../state/gameStore'
 export function TurnPicker() {
   const gs = useGame((s) => s.gameState)
   const characters = useGame((s) => s.characters)
+  const affinities = useGame((s) => s.affinities)
   const advanceRound = useGame((s) => s.advanceRound)
   const autoResolveRound = useGame((s) => s.autoResolveRound)
   const combatTargetId = useGame((s) => s.combatTargetId)
@@ -49,11 +53,23 @@ export function TurnPicker() {
     ? hasStatus(gs.activeStatuses ?? {}, decider.id, 'silence')
     : false
 
+  // IDs of companions currently on-field and alive (for duo availability check).
+  const onFieldAliveCompanionIds: string[] = (gs?.partyIds ?? []).filter((id) => {
+    const c = characters.find((ch) => ch.id === id)
+    if (!c || c.kind !== 'companion') return false
+    const r = gs ? resourceOf(gs, c) : null
+    return r ? r.hp > 0 : true
+  })
+
   // Single-target actions hit the chosen enemy; AoE skills ('allEnemies') ignore the pick and the
   // engine loops every living enemy.
-  const choose = (choice: SkillId | 'basic' | typeof GUARD_ACTION) => {
+  const choose = (choice: SkillId | 'basic' | typeof GUARD_ACTION | typeof TAUNT_ACTION) => {
     if (choice === GUARD_ACTION) {
       void advanceRound(GUARD_ACTION, undefined)
+      return
+    }
+    if (choice === TAUNT_ACTION) {
+      void advanceRound(TAUNT_ACTION, undefined)
       return
     }
     const aoe = choice !== 'basic' && SKILL_DEFS[choice]?.target === 'allEnemies'
@@ -106,6 +122,16 @@ export function TurnPicker() {
             <span className="skill-btn-name">🛡防御</span>
             <span className="skill-btn-cost">MP0</span>
           </button>
+          {hasTalentPassive(decider, gs?.learnedTalents, 'taunt') && (
+            <button
+              className={`skill-btn ${planned === TAUNT_ACTION ? 'selected' : ''}`}
+              title={`${decider.name}：嘲讽——一回合内敌人优先攻击你`}
+              onClick={() => choose(TAUNT_ACTION)}
+            >
+              <span className="skill-btn-name">🎯嘲讽</span>
+              <span className="skill-btn-cost">MP0</span>
+            </button>
+          )}
           {isSilenced && (
             <span className="skill-btn-silence-hint" title="角色处于「沉默」状态，技能被封印，只能普攻或防御">
               🤐 沉默中，技能封印
@@ -125,6 +151,28 @@ export function TurnPicker() {
                 <span className="skill-btn-cost">
                   MP{skill.mpCost}{skill.hpCost ? `·HP${skill.hpCost}` : ''}
                 </span>
+              </button>
+            )
+          })}
+          {!isSilenced && availableDuoSkills(decider.id, onFieldAliveCompanionIds, affinities).map((duo) => {
+            const partnerIdInPair = duo.pair[0] === decider.id ? duo.pair[1] : duo.pair[0]
+            const partnerName = COMPANION_DEFS[partnerIdInPair]?.name ?? partnerIdInPair
+            const partnerR = gs && characters.find((c) => c.id === partnerIdInPair)
+              ? resourceOf(gs, characters.find((c) => c.id === partnerIdInPair)!)
+              : null
+            const partnerAffordable = partnerR ? partnerR.mp >= duo.mpCostEach : false
+            const selfAffordable = r.mp >= duo.mpCostEach
+            const affordable = selfAffordable && partnerAffordable
+            return (
+              <button
+                key={duo.id}
+                className={`skill-btn ${planned === duo.id ? 'selected' : ''}`}
+                disabled={!affordable}
+                title={`连携技：${duo.desc}`}
+                onClick={() => choose(duo.id)}
+              >
+                <span className="skill-btn-name">🌟{t(duo.nameKey)} ✕{partnerName}</span>
+                <span className="skill-btn-cost">MP{duo.mpCostEach}×2</span>
               </button>
             )
           })}

@@ -13,6 +13,8 @@ import {
   AFFINITY_JOURNAL_TOTAL,
   AFFINITY_TODO_COMPLETE,
   BOSS_HEAVY_POOL_CAP,
+  COUNTER_POWER_PCT,
+  DUO_POW_SHARE,
   ENEMY_ATK_MULT,
   ENEMY_DEF_SOAK,
   GOLD_QUEST_CLEAR,
@@ -20,6 +22,7 @@ import {
   GUARD_ACTION,
   GUARD_DAMAGE_REDUCTION,
   JOURNAL_XP,
+  MP_DISCOUNT_PCT,
   MP_REGEN_TODO,
   OVERDUE_ATK_GROW,
   OVERDUE_HP_GROW,
@@ -30,6 +33,9 @@ import {
   SKILL_HEAL_MULT,
   SMART_GUARD_HP_PCT,
   SMART_HEAL_HP_PCT,
+  TALENT_CRIT_BONUS,
+  TALENT_POINT_EVERY_LEVELS,
+  TAUNT_ACTION,
   TODO_XP,
   VICTORY_AFFINITY,
   VICTORY_HP_RESTORE_PCT,
@@ -47,6 +53,9 @@ import { rollDamage } from './damage'
 import { effectiveStats, type CombatContext } from './effectiveStats'
 import type { DomainEvent } from './events'
 import { profileFor } from '../companion/roster'
+import { rankIndex } from '../companion/affinity'
+import { duoSkillFor, type DuoSkillDef } from '../companion/duoSkills'
+import { canLearn, hasTalentPassive, skillPowerMult } from '../companion/talents'
 import { applyXp } from './leveling'
 import {
   applyStatus, clearAllStatuses, clearStatusKinds, cloneStatusMap, hasStatus,
@@ -105,6 +114,51 @@ function combatCtx(input: ReducerInput): CombatContext {
     activeSynergies: input.activeSynergies ?? [],
     partyBuffs: input.gameState.partyBuffs, // def/spd/magPct fold into effectiveStats
     statuses: input.gameState.activeStatuses, // §26 stat folds (slow→spd), input-time view
+    learnedTalents: input.gameState.learnedTalents, // §28 talent stat nodes
+  }
+}
+
+// ---------- §28 talent / affix helpers (Turn-level) ----------
+
+/** A skill's MP cost for this member (mpDiscount passive folds in, rounded up). */
+function skillCostOf(t: Turn, member: Character, skill: SkillDef): number {
+  const discounted = hasTalentPassive(member, t.gs.learnedTalents, 'mpDiscount')
+  return discounted ? Math.ceil(skill.mpCost * (1 - MP_DISCOUNT_PCT)) : skill.mpCost
+}
+
+/** Extra crit % for this member: critBonus talent + critBonus equipment affixes. */
+function critBonusOf(t: Turn, member: Character): number {
+  let pct = hasTalentPassive(member, t.gs.learnedTalents, 'critBonus') ? TALENT_CRIT_BONUS : 0
+  for (const oe of t.input.ownedEquipment ?? []) {
+    if (oe.equippedBy !== member.id) continue
+    for (const a of EQUIPMENT_DEFS[oe.defId]?.affixes ?? []) {
+      if (a.kind === 'critBonus') pct += a.pct
+    }
+  }
+  return pct
+}
+
+/** §28 onCritHeal affixes: heal the wielder after a landed CRIT. */
+function applyCritHeal(t: Turn, member: Character): void {
+  let amount = 0
+  for (const oe of t.input.ownedEquipment ?? []) {
+    if (oe.equippedBy !== member.id) continue
+    for (const a of EQUIPMENT_DEFS[oe.defId]?.affixes ?? []) {
+      if (a.kind === 'onCritHeal') amount += a.amount
+    }
+  }
+  if (amount > 0) healChar(t, member, amount)
+}
+
+/** §28 statusOnHit affixes: a landed BASIC attack tries each on the surviving target. */
+function applyOnHitStatuses(t: Turn, member: Character, targetId: ID): void {
+  const target = t.gs.enemies.find((m) => m.id === targetId)
+  if (!target || target.hp <= 0) return
+  for (const oe of t.input.ownedEquipment ?? []) {
+    if (oe.equippedBy !== member.id) continue
+    for (const a of EQUIPMENT_DEFS[oe.defId]?.affixes ?? []) {
+      if (a.kind === 'statusOnHit') inflict(t, targetId, a.status, target.maxHp, member.id)
+    }
   }
 }
 
@@ -196,9 +250,19 @@ function setR(t: Turn, c: Character, r: CharResource): void {
 function grantXp(t: Turn, amount: number): void {
   if (amount <= 0) return
   for (const c of t.combatants) {
+    const before = sOf(t, c).level
     const r = applyXp(sOf(t, c), profileFor(c), amount)
     t.stats[c.id] = r.stats
     t.effects.push({ type: 'charXp', characterId: c.id, amount, levelsGained: r.levelsGained })
+    // §28 — 1 talent point per TALENT_POINT_EVERY_LEVELS levels crossed (lv 5, 10, …).
+    if (r.levelsGained > 0) {
+      const crossings =
+        Math.floor(r.stats.level / TALENT_POINT_EVERY_LEVELS) - Math.floor(before / TALENT_POINT_EVERY_LEVELS)
+      if (crossings > 0) {
+        const cur = t.gs.talentPoints ?? {}
+        t.gs.talentPoints = { ...cur, [c.id]: (cur[c.id] ?? 0) + crossings }
+      }
+    }
   }
 }
 
@@ -282,7 +346,9 @@ function advanceEnemyPattern(t: Turn, attacker: Monster): void {
 function enemyStrike(t: Turn, attacker: Monster, ctx: CombatContext): void {
   const alive = t.combatants.filter((c) => rOf(t, c).hp > 0)
   if (alive.length === 0) return
-  const target = alive.reduce((a, b) => (rOf(t, a).hp >= rOf(t, b).hp ? a : b))
+  // §28 嘲讽: a live taunter draws the hit; otherwise the sturdiest member soaks it.
+  const taunter = alive.find((c) => hasStatus(t.gs.activeStatuses, c.id, 'taunt'))
+  const target = taunter ?? alive.reduce((a, b) => (rOf(t, a).hp >= rOf(t, b).hp ? a : b))
   const eff = effectiveStats(target, ctx)
   const moves = attacker.pattern && attacker.pattern.length > 0 ? attacker.pattern : [{ kind: 'attack' as const }]
   const idx = (attacker.patternIdx ?? 0) % moves.length
@@ -309,6 +375,32 @@ function enemyStrike(t: Turn, attacker: Monster, ctx: CombatContext): void {
   }
   if (out.missed) {
     t.effects.push({ type: 'enemyAttack', targetId: target.id, amount: 0, missed: true })
+    // §28 见切反击: a dodger with the counter passive ripostes at COUNTER_POWER_PCT.
+    if (hasTalentPassive(target, t.gs.learnedTalents, 'counter')) {
+      const wk = attackKindOf(target, ctx)
+      const magic = wk.kind === 'arcane' || eff.wis > eff.str
+      const riposte = rollDamage({
+        pow: magic ? eff.wis : eff.str,
+        power: COUNTER_POWER_PCT,
+        def: magic ? (attacker.mdef ?? Math.round(attacker.def * 0.8)) : attacker.def,
+        attackerHit: 999, // a riposte never whiffs — the opening is already there
+        targetEva: 0,
+        attackerSkl: eff.skl,
+        physKind: magic ? 'arcane' : wk.kind,
+        attackerElement: wk.element,
+        targetElement: attacker.element,
+        targetWeak: attacker.physWeak,
+        targetResist: attacker.physResist,
+        roll: rollOf(t.input),
+      })
+      applyEnemyDamageCore(t, attacker.id, riposte.dmg, (hpAfter) => {
+        t.effects.push({ type: 'counter', characterId: target.id, targetId: attacker.id, amount: riposte.dmg })
+        t.effects.push({
+          type: 'damage', amount: riposte.dmg, monsterHpAfter: hpAfter,
+          actorId: target.id, targetId: attacker.id, fromSkill: true, crit: riposte.crit || undefined,
+        })
+      })
+    }
   } else {
     const r = rOf(t, target)
     const hpAfter = Math.max(0, r.hp - dmg)
@@ -322,7 +414,8 @@ function enemyStrike(t: Turn, attacker: Monster, ctx: CombatContext): void {
       inflict(t, target.id, move.inflicts, sOf(t, target).maxHp, attacker.id)
     }
   }
-  // Advance the rotation; warn if the NEXT move is a telegraphed wind-up.
+  // Advance the rotation; warn if the NEXT move is a telegraphed wind-up. (A counter that
+  // cleared the team respawned `enemies`; advancing a missing id is a harmless no-op map.)
   advanceEnemyPattern(t, attacker)
 }
 
@@ -639,6 +732,10 @@ export function gameReducer(input: ReducerInput, event: DomainEvent): ReducerRes
       return reduceTaskTimerExpired(input)
     case 'JournalWritten':
       return reduceJournalWritten(input, event.entry.mood)
+    case 'TalentLearned':
+      return reduceTalentLearned(input, event.characterId, event.nodeId)
+    case 'HabitMilestone':
+      return reduceHabitMilestone(input, event.habitId, event.streak)
     // Unwired — kept for the extensibility contract.
     case 'CalendarEventAttended':
     case 'FocusStreak':
@@ -647,15 +744,75 @@ export function gameReducer(input: ReducerInput, event: DomainEvent): ReducerRes
   }
 }
 
+// ---------- §28 growth-system events ----------
+
+/** Learn one talent node: validates the tree/prereq/cost (canLearn), deducts the points,
+ *  records the node. Invalid picks are no-ops (stale UI clicks must never corrupt state). */
+function reduceTalentLearned(input: ReducerInput, characterId: ID, nodeId: string): ReducerResult {
+  const t = newTurn(input)
+  const char = t.party.find((c) => c.id === characterId)
+  if (!char) return finishTurn(t)
+  const points = t.gs.talentPoints?.[characterId] ?? 0
+  const node = canLearn(char, nodeId, t.gs.learnedTalents, points)
+  if (!node) return finishTurn(t)
+  t.gs.talentPoints = { ...(t.gs.talentPoints ?? {}), [characterId]: points - node.cost }
+  const learned = t.gs.learnedTalents ?? {}
+  t.gs.learnedTalents = { ...learned, [characterId]: [...(learned[characterId] ?? []), node.id] }
+  t.effects.push({ type: 'talentLearned', characterId, nodeId: node.id })
+  return finishTurn(t)
+}
+
+/** §28 habit milestones (fired by habitStore AFTER stamping milestoneRewardedAt):
+ *  7 天 → 全队天赋点 +1; 30 天 → a RARE item from the active world (else +300 gold);
+ *  100 天 → an EPIC item (else +800 gold) AND 全队天赋点 +2. */
+function reduceHabitMilestone(input: ReducerInput, habitId: ID, streak: number): ReducerResult {
+  const t = newTurn(input)
+  const grantPointsToAll = (n: number): void => {
+    const cur = { ...(t.gs.talentPoints ?? {}) }
+    for (const c of t.combatants) cur[c.id] = (cur[c.id] ?? 0) + n
+    t.gs.talentPoints = cur
+  }
+  /** First not-yet-owned item of the wanted rarity in the active world (stable by id). */
+  const pickByRarity = (rarity: 'rare' | 'epic'): string | undefined => {
+    const owned = new Set(t.gs.ownedEquipment.map((o) => o.defId))
+    return Object.values(EQUIPMENT_DEFS)
+      .filter((d) => (d.rarity ?? 'common') === rarity)
+      .filter((d) => !d.worldId || d.worldId === t.gs.activeWorldId || !t.gs.activeWorldId)
+      .filter((d) => !owned.has(d.id))
+      .sort((a, b) => a.id.localeCompare(b.id))[0]?.id
+  }
+  let rewardText = ''
+  if (streak >= 100) {
+    const epic = pickByRarity('epic')
+    if (epic) grantQuestReward(t, { equipmentDefIds: [epic], unlockCompanionIds: [] })
+    else t.gs.gold += 800
+    grantPointsToAll(2)
+    rewardText = epic ? '史诗装备 + 全队天赋点 +2' : '金币 +800 + 全队天赋点 +2'
+  } else if (streak >= 30) {
+    const rare = pickByRarity('rare')
+    if (rare) grantQuestReward(t, { equipmentDefIds: [rare], unlockCompanionIds: [] })
+    else t.gs.gold += 300
+    rewardText = rare ? '稀有装备' : '金币 +300'
+  } else {
+    grantPointsToAll(1)
+    rewardText = '全队天赋点 +1'
+  }
+  t.effects.push({ type: 'habitMilestone', habitId, streak, rewardText })
+  return finishTurn(t)
+}
+
 /** Spend a planned skill's cost and apply its effect (attack/heal/buff/debuff), pushing the
  *  skillCast log line. The caller has already checked the caster is alive and can pay. The attack
  *  damage is tagged `fromSkill` so the log shows only the cast line (the float still counts it).
  *  Returns true iff an attack skill landed the killing blow. */
 function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: CombatContext, targetId?: ID): boolean {
   const r = rOf(t, caster)
-  setR(t, caster, { hp: r.hp - (skill.hpCost ?? 0), mp: r.mp - skill.mpCost })
+  setR(t, caster, { hp: r.hp - (skill.hpCost ?? 0), mp: r.mp - skillCostOf(t, caster, skill) })
   const casterId = caster.id
   const eff = effectiveStats(caster, ctx)
+  // §28 — talent skillPower nodes boost ONE skill; critBonus talent/affixes feed the roll.
+  const powerMult = skillPowerMult(caster, t.gs.learnedTalents, skill.id)
+  const critBonus = critBonusOf(t, caster)
   if (skill.kind === 'attack') {
     // §25: skills resolve through the unified pipeline. Physical skills scale off str/物攻
     // and inherit the weapon's category; magic skills (scaling: 'mag') scale off wis/魔攻 as
@@ -665,11 +822,12 @@ function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: Comb
     const wk = attackKindOf(caster, ctx)
     const strikeArgs = (target: Monster) => ({
       pow: magicSkill ? eff.wis : eff.str,
-      power: skill.power * SKILL_ATK_MULT,
+      power: skill.power * SKILL_ATK_MULT * powerMult,
       def: magicSkill ? (target.mdef ?? Math.round(target.def * 0.8)) : target.def,
       attackerHit: eff.hit,
       targetEva: target.eva ?? 6,
       attackerSkl: eff.skl,
+      critBonusPct: critBonus || undefined,
       physKind: skill.physKind ?? (magicSkill ? ('arcane' as const) : wk.kind),
       attackerElement: skill.element ?? wk.element,
       targetElement: target.element,
@@ -695,6 +853,7 @@ function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: Comb
         }
         if (out.missed) continue
         cleared = damageEnemy(t, id, out.dmg, casterId, true, { crit: out.crit, typeMult: out.typeMult }) || cleared
+        if (out.crit) applyCritHeal(t, caster) // §28 onCritHeal affixes
         if (!cleared && skill.inflictsStatus) {
           // §26: each landed AoE hit tries to stick the status on its (surviving) target.
           const after = t.gs.enemies.find((m) => m.id === id)
@@ -714,6 +873,7 @@ function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: Comb
     const monsterHpAfter = Math.max(0, target.hp - out.dmg) // shown in the log so it reconciles with the bar
     t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'attack', amount: out.dmg, monsterHpAfter, targetId: target.id, crit: out.crit || undefined, typeMult: out.typeMult !== 1 ? out.typeMult : undefined })
     const cleared = damageEnemy(t, target.id, out.dmg, casterId, true, { crit: out.crit, typeMult: out.typeMult })
+    if (out.crit) applyCritHeal(t, caster) // §28 onCritHeal affixes
     if (!cleared && skill.inflictsStatus) {
       // §26: a landed attack tries to stick its status on the (still standing) target.
       const after = t.gs.enemies.find((m) => m.id === target.id)
@@ -722,7 +882,7 @@ function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: Comb
     return cleared
   }
   if (skill.kind === 'heal') {
-    const heal = Math.round(eff.wis * skill.power * SKILL_HEAL_MULT)
+    const heal = Math.round(eff.wis * skill.power * SKILL_HEAL_MULT * powerMult)
     t.effects.push({ type: 'skillCast', skillId: skill.id, casterId, skillKind: 'heal', amount: heal })
     if (skill.target === 'allAllies') {
       for (const c of t.combatants) {
@@ -770,6 +930,88 @@ function applySkillEffect(t: Turn, caster: Character, skill: SkillDef, ctx: Comb
     }
   }
   return false
+}
+
+// ---------- §28 羁绊连携技 (duo techs) ----------
+
+const DUO_CLEANSE: StatusKind[] = ['poison', 'burn', 'sleep', 'paralysis', 'silence', 'slow']
+
+/** Execute a duo tech if every condition holds: caster in the pair, partner on-field+alive,
+ *  both bonds at the required rank, both can pay mpCostEach. Returns the killing-blow flag
+ *  when EXECUTED, undefined when conditions fail (caller degrades to a basic attack).
+ *  Design: the duo consumes only the CASTER's turn — the partner lends stats + MP but keeps
+ *  their own action (no cross-dispatch consumed-turn state to persist; parity-safe). */
+function tryDuoSkill(
+  t: Turn, caster: Character, duo: DuoSkillDef, ctx: CombatContext, targetId?: ID,
+): boolean | undefined {
+  if (!duo.pair.includes(caster.id)) return undefined
+  const partnerId = duo.pair[0] === caster.id ? duo.pair[1] : duo.pair[0]
+  const partner = t.combatants.find((c) => c.id === partnerId)
+  if (!partner || rOf(t, partner).hp <= 0) return undefined
+  const ranksOk = duo.pair.every((id) => {
+    const a = t.aff[id]
+    return a && rankIndex(a.rank) >= rankIndex(duo.requiredRank)
+  })
+  if (!ranksOk) return undefined
+  const rc = rOf(t, caster)
+  if (rc.mp < duo.mpCostEach || rOf(t, partner).mp < duo.mpCostEach) return undefined
+
+  setR(t, caster, { ...rc, mp: rc.mp - duo.mpCostEach })
+  const rp = rOf(t, partner)
+  setR(t, partner, { ...rp, mp: rp.mp - duo.mpCostEach })
+  const effA = effectiveStats(caster, ctx)
+  const effB = effectiveStats(partner, ctx)
+
+  if (duo.kind === 'heal') {
+    const heal = Math.round((effA.wis + effB.wis) * DUO_POW_SHARE * duo.power * SKILL_HEAL_MULT)
+    t.effects.push({ type: 'duoSkillCast', skillId: duo.id, casterIds: [caster.id, partnerId], amount: heal })
+    for (const c of t.combatants) {
+      if (rOf(t, c).hp <= 0) continue
+      healChar(t, c, heal)
+      cleanseStatuses(t, c.id, DUO_CLEANSE)
+    }
+    return false
+  }
+
+  // attack — combined offensive stat; an ultimate never whiffs (hit 999 vs eva 0).
+  const pow = (Math.max(effA.str, effA.wis) + Math.max(effB.str, effB.wis)) * DUO_POW_SHARE
+  const strike = (target: Monster) =>
+    rollDamage({
+      pow,
+      power: duo.power * SKILL_ATK_MULT,
+      def: (duo.physKind ?? 'arcane') === 'arcane' ? (target.mdef ?? Math.round(target.def * 0.8)) : target.def,
+      attackerHit: 999,
+      targetEva: 0,
+      attackerSkl: Math.max(effA.skl, effB.skl),
+      physKind: duo.physKind ?? 'arcane',
+      attackerElement: duo.element,
+      targetElement: target.element,
+      targetWeak: target.physWeak,
+      targetResist: target.physResist,
+      roll: rollOf(t.input),
+    })
+  if (duo.target === 'allEnemies') {
+    const ids = livingEnemies(t.gs.enemies).map((m) => m.id)
+    let cleared = false
+    let headlined = false
+    for (const id of ids) {
+      if (cleared) break
+      const e = t.gs.enemies.find((m) => m.id === id)
+      if (!e || e.hp <= 0) continue
+      const out = strike(e)
+      if (!headlined) {
+        t.effects.push({ type: 'duoSkillCast', skillId: duo.id, casterIds: [caster.id, partnerId], amount: out.dmg, crit: out.crit || undefined })
+        headlined = true
+      }
+      cleared = damageEnemy(t, id, out.dmg, caster.id, true, { crit: out.crit, typeMult: out.typeMult }) || cleared
+    }
+    return cleared
+  }
+  const target = resolveTarget(t, targetId)
+  if (!target) return false
+  const out = strike(target)
+  t.effects.push({ type: 'duoSkillCast', skillId: duo.id, casterIds: [caster.id, partnerId], amount: out.dmg, targetId: target.id, crit: out.crit || undefined })
+  return damageEnemy(t, target.id, out.dmg, caster.id, true, { crit: out.crit, typeMult: out.typeMult })
 }
 
 /** §26: clear the listed status kinds from one combatant, logging each removal. */
@@ -882,11 +1124,30 @@ function resolveTurnInto(
     t.effects.push({ type: 'guarded', characterId: member.id })
     return false
   }
+  // §28 嘲讽 stance (talent-gated): draw enemy turn-hits to this member this round.
+  if (plannedId === TAUNT_ACTION) {
+    if (hasTalentPassive(member, t.gs.learnedTalents, 'taunt')) {
+      t.gs.activeStatuses = applyStatus(
+        t.gs.activeStatuses, member.id, { kind: 'taunt', rounds: 1 }, sOf(t, member).maxHp, t.input.newId,
+      )
+      t.effects.push({ type: 'statusApplied', targetId: member.id, kind: 'taunt', rounds: 1, sourceId: member.id })
+      return false
+    }
+    plannedId = undefined // stance not unlocked → fall through to the basic attack
+  }
   // §26 silence: planned skills are locked — fall through to the basic attack.
   const silenced = hasStatus(t.gs.activeStatuses, member.id, 'silence')
+  // §28 羁绊连携技 — the plan may name a duo id; unmet conditions degrade to a basic attack.
+  if (!silenced && plannedId && plannedId !== 'basic') {
+    const duo = duoSkillFor(plannedId)
+    if (duo) {
+      const fired = tryDuoSkill(t, member, duo, ctx, targetId)
+      if (fired !== undefined) return fired
+    }
+  }
   const skill = !silenced && plannedId && plannedId !== 'basic' ? unlockedSkills(member).find((s) => s.id === plannedId) : undefined
   const r = rOf(t, member)
-  if (skill && r.mp >= skill.mpCost && r.hp > (skill.hpCost ?? 0)) {
+  if (skill && r.mp >= skillCostOf(t, member, skill) && r.hp > (skill.hpCost ?? 0)) {
     return applySkillEffect(t, member, skill, ctx, targetId) // planned skill fires (spends MP/HP)
   }
   // §25 basic attack through the unified pipeline. Identity: an arcane weapon (杖扇琴) swings
@@ -898,6 +1159,7 @@ function resolveTurnInto(
   const eff = effectiveStats(member, ctx)
   const wk = attackKindOf(member, ctx)
   const magic = wk.kind === 'arcane' || eff.wis > eff.str
+  const memberCritBonus = critBonusOf(t, member) // §28 talent/affix crit
   const out = rollDamage({
     pow: magic ? eff.wis : eff.str,
     power: rctx.mult,
@@ -905,6 +1167,7 @@ function resolveTurnInto(
     attackerHit: eff.hit,
     targetEva: target.eva ?? 6,
     attackerSkl: eff.skl,
+    critBonusPct: memberCritBonus || undefined,
     physKind: magic ? 'arcane' : wk.kind,
     attackerElement: wk.element,
     targetElement: target.element,
@@ -917,7 +1180,10 @@ function resolveTurnInto(
     t.effects.push({ type: 'damage', amount: 0, monsterHpAfter: target.hp, actorId: member.id, targetId: target.id, missed: true })
     return false
   }
-  return damageEnemy(t, target.id, out.dmg, member.id, false, { crit: out.crit, typeMult: out.typeMult })
+  const clearedBasic = damageEnemy(t, target.id, out.dmg, member.id, false, { crit: out.crit, typeMult: out.typeMult })
+  if (out.crit) applyCritHeal(t, member) // §28 onCritHeal affixes
+  if (!clearedBasic) applyOnHitStatuses(t, member, target.id) // §28 statusOnHit affixes
+  return clearedBasic
 }
 
 /** §26 smart tactics (Settings.autoTactics → input.tactics 'smart'): pick a better DEFAULT

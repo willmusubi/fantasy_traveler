@@ -4,6 +4,7 @@
 
 import { COMPANION_DEFS } from '../companion/roster'
 import { SKILL_DEFS } from '../companion/skills'
+import { DUO_SKILL_DEFS } from '../companion/duoSkills'
 import { STATUS_META } from '../domain/config'
 import type { Character, CombatLogEntry, CombatLogLine, ID, Monster } from '../domain/types'
 import { t } from '../i18n'
@@ -168,6 +169,38 @@ export function buildLogEntry(effects: GameEffect[], ctx: LogContext): CombatLog
         lines.push({ icon: '⚠', text: `⚠ ${name} ${e.narration ?? '进入了新的阶段'}${phaseNote}`, tone: 'bad' })
         break
       }
+      case 'duoSkillCast': {
+        const [idA, idB] = e.casterIds
+        const nameA = nameOf(idA)
+        const nameB = nameOf(idB)
+        const duoDef = DUO_SKILL_DEFS[e.skillId]
+        const skillLabel = duoDef ? t(duoDef.nameKey) : e.skillId
+        lines.push({
+          icon: '🌟',
+          text: `${nameA} ✕ ${nameB} 连携技「${skillLabel}」！${e.missed ? '……未命中！' : `…-${e.amount}（好感羁绊的力量）`}`,
+          tone: 'good',
+        })
+        break
+      }
+      case 'counter': {
+        const cName = nameOf(e.characterId)
+        const eName = enemyNameById(e.targetId)
+        lines.push({
+          icon: '↩',
+          text: `${cName} 看破反击 → ${eName}  -${e.amount}`,
+          tone: 'good',
+        })
+        break
+      }
+      case 'habitMilestone': {
+        lines.push({
+          icon: '🏅',
+          text: `习惯里程碑：坚持 ${e.streak} 天（${e.rewardText}）`,
+          tone: 'good',
+        })
+        break
+      }
+      // talentLearned → low-noise; skip a log line to keep the log clean.
       // 'heal' (per-target) is summarised by the skillCast line; 'mood' isn't logged.
     }
   }

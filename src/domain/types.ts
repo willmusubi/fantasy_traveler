@@ -186,6 +186,10 @@ export interface Habit {
   rewardedOn?: string
   /** YYYY-MM-DD (local) the streak-break sweep last ran for this habit (once-per-day guard). */
   lastMissOn?: string
+  /** §28 — milestone payouts already made: streak threshold (as string key, e.g. "7") → ISO
+   *  date paid. Stamped by the store BEFORE dispatching HabitMilestone, so the reward can
+   *  never double-fire. */
+  milestoneRewardedAt?: Record<string, string>
   /** Manual sort position (ascending); backfilled on hydrate for pre-order saves. */
   order?: number
   createdAt: string
@@ -238,7 +242,7 @@ export interface Affinity {
 export type StatusKind =
   | 'poison' | 'burn' | 'regen'
   | 'sleep' | 'paralysis' | 'silence' | 'slow'
-  | 'guard'
+  | 'guard' | 'taunt'
 
 /** A live status on one combatant (party member or enemy), stored in
  *  GameState.activeStatuses keyed by combatant id. Durations tick down ONCE per round
@@ -351,6 +355,62 @@ export interface OwnedEquipment {
   defId: string // → EQUIPMENT_DEFS
   equippedBy?: ID // characterId, or undefined if in the stash
   acquiredAt: string
+}
+
+// ---------- §28 growth systems: rarity / affixes / talents ----------
+
+/** §28 equipment rarity — display tier + affix-budget convention (no hidden mechanics:
+ *  a rarity itself does nothing; its affixes do). Missing = 'common'. */
+export type EquipRarity = 'common' | 'uncommon' | 'rare' | 'epic'
+
+/** §28 equipment affix — a special property beyond flat stat bonuses. */
+export type EquipAffix =
+  /** Percentage stat boost, folded in effectiveStats after flat bonuses. */
+  | { kind: 'pctStat'; stat: 'str' | 'vit' | 'wis' | 'spr' | 'spd'; pct: number }
+  /** Heal the wielder for this many HP whenever they land a CRIT. */
+  | { kind: 'onCritHeal'; amount: number }
+  /** The wielder's BASIC attacks try to inflict this status on hit. */
+  | { kind: 'statusOnHit'; status: StatusEffectSpec }
+  /** Extra crit chance in percentage points (feeds rollDamage's critBonusPct). */
+  | { kind: 'critBonus'; pct: number }
+
+/** §28 one node of a character's talent tree (5–10 nodes, shallow prerequisites).
+ *  Spent with talent points (1 per 5 levels). Exactly one effect field is set. */
+export interface TalentNode {
+  id: string
+  name: string
+  desc: string
+  /** Talent points to learn. */
+  cost: number
+  /** Prerequisite node id (single chain link); absent = a root node. */
+  requires?: string
+  /** Flat stat bump folded into effectiveStats. */
+  bonus?: Partial<ProfileBlock>
+  /** Power multiplier for ONE skill: power × (1 + pct). */
+  skillPower?: { skillId: SkillId; pct: number }
+  /** Behavior unlock: counter = riposte at 50% power when dodging an enemy turn-attack;
+   *  taunt = the 嘲讽 stance becomes plannable; mpDiscount = skills cost 20% less MP;
+   *  critBonus = +5% crit chance. */
+  passive?: 'counter' | 'taunt' | 'mpDiscount' | 'critBonus'
+}
+
+/** §28 a 羁绊连携技 — a paired ultimate unlocked by affinity rank. Both members must be
+ *  on-field, alive, un-acted this round, and each pays mpCostEach. */
+export interface DuoSkillDef {
+  id: string
+  nameKey: string
+  desc: string
+  /** The two companion/def ids (player participates via 'traveler'). */
+  pair: [string, string]
+  /** Minimum affinity rank BOTH members must have with you. */
+  requiredRank: 'A' | 'S'
+  kind: 'attack' | 'heal'
+  /** Coefficient on the COMBINED offensive stat (attack) or wis sum (heal). */
+  power: number
+  target: 'enemy' | 'allEnemies' | 'allAllies'
+  mpCostEach: number
+  physKind?: PhysKind
+  element?: Element
 }
 
 export interface EncounterSpec {
@@ -571,6 +631,12 @@ export type GameEffect =
   | { type: 'scriptChoiceOffered'; prompt: string; options: ScriptChoiceOption[] }
   | { type: 'scriptChapterAdvanced'; chapterId: string; firstEnemy?: string }
   | { type: 'scriptCompleted'; scriptId: string; flags: Record<string, string | boolean> }
+  // §28 growth systems
+  | { type: 'talentLearned'; characterId: ID; nodeId: string }
+  | { type: 'duoSkillCast'; skillId: string; casterIds: [ID, ID]; amount: number; targetId?: ID; missed?: boolean; crit?: boolean }
+  | { type: 'habitMilestone'; habitId: ID; streak: number; rewardText: string }
+  /** §28 counter riposte: the dodger strikes back at the attacking enemy. */
+  | { type: 'counter'; characterId: ID; targetId: ID; amount: number; missed?: boolean }
   // §26 status effects + boss phases
   | { type: 'statusApplied'; targetId: ID; kind: StatusKind; rounds: number; sourceId?: ID }
   /** DOT damage / HOT heal resolved at round end. amount = HP lost (poison/burn) or gained (regen). */
@@ -672,6 +738,10 @@ export interface GameState {
   /** §26 — live statuses per combatant id (party members AND enemies). Missing/empty = none.
    *  Optional for save-compat; withGameStateDefaults backfills {}. */
   activeStatuses?: Record<ID, CombatStatus[]>
+  /** §28 — learned talent node ids per character. Optional; backfilled {}. */
+  learnedTalents?: Record<ID, string[]>
+  /** §28 — unspent talent points per character (1 earned per 5 levels). Optional; backfilled {}. */
+  talentPoints?: Record<ID, number>
   /** An interactive round mid-resolution (FF-style step-through). Absent when idle. */
   activeRound?: ActiveRound
 }

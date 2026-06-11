@@ -1,6 +1,7 @@
 // Pure effective-stats computation (§22). Base stats + equipped-item flat bonuses +
 // party-wide synergy bonuses. Empty context = identity (so M0 combat is unchanged).
 
+import { learnedNodesOf } from '../companion/talents'
 import type { Character, CombatStatus, ID, OwnedEquipment, PartyBuff, Stats } from '../domain/types'
 import { slowedSpd } from './status'
 import { EQUIPMENT_DEFS } from '../world/equipment'
@@ -16,6 +17,8 @@ export interface CombatContext {
    *  round-start SNAPSHOT (frozen, like partyBuffs) so sync/step paths stay byte-identical;
    *  action gates (sleep/guard) read LIVE state in the reducer instead. Optional = none. */
   statuses?: Record<ID, CombatStatus[]>
+  /** §28 — learned talent node ids per character (GameState.learnedTalents). Optional = none. */
+  learnedTalents?: Record<ID, string[]>
 }
 
 export const EMPTY_COMBAT_CONTEXT: CombatContext = { ownedEquipment: [], activeSynergies: [] }
@@ -32,12 +35,26 @@ export function effectiveStats(char: Character, ctx: CombatContext): Stats {
   const s: Stats = { ...char.stats }
 
   // 1. Flat additive bonuses from items this character has equipped.
+  //    §28: pctStat affixes accumulate here and fold multiplicatively at step 3.5.
+  const affixPct: Partial<Record<'str' | 'vit' | 'wis' | 'spr' | 'spd', number>> = {}
   for (const oe of ctx.ownedEquipment) {
     if (oe.equippedBy !== char.id) continue
     const def = EQUIPMENT_DEFS[oe.defId]
     if (!def) continue
     for (const k of FLAT_KEYS) {
       const v = def.bonus[k]
+      if (v) s[k] += v
+    }
+    for (const a of def.affixes ?? []) {
+      if (a.kind === 'pctStat') affixPct[a.stat] = (affixPct[a.stat] ?? 0) + a.pct
+    }
+  }
+
+  // 1.5 §28 learned talent flat bonuses (stat nodes).
+  for (const n of learnedNodesOf(char, ctx.learnedTalents)) {
+    if (!n.bonus) continue
+    for (const k of FLAT_KEYS) {
+      const v = n.bonus[k]
       if (v) s[k] += v
     }
   }
@@ -63,6 +80,11 @@ export function effectiveStats(char: Character, ctx: CombatContext): Stats {
   if (sp) s.spd = Math.max(1, Math.round(s.spd * (1 + sp)))
   const mp = sumPct('magPct')
   if (mp) s.wis = Math.max(0, Math.round(s.wis * (1 + mp)))
+
+  // 3.5 §28 equipment pctStat affixes (after flats/synergies/buffs, before status folds).
+  for (const [stat, pct] of Object.entries(affixPct) as ['str' | 'vit' | 'wis' | 'spr' | 'spd', number][]) {
+    if (pct) s[stat] = Math.max(stat === 'spd' ? 1 : 0, Math.round(s[stat] * (1 + pct)))
+  }
 
   // 4. §26 status stat-folds: slow cuts spd (floored at 1 — the timeline never stalls).
   const myStatuses = ctx.statuses?.[char.id]

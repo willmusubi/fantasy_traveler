@@ -128,6 +128,8 @@ export function withGameStateDefaults(s: GameState): GameState {
     charge: s.charge ?? {}, // persistent CTB gauges; missing entry = 0
     roundPlan: s.roundPlan ?? {}, // per-member planned action; missing entry = basic attack
     activeStatuses: s.activeStatuses ?? {}, // §26 — pre-status saves carry none
+    learnedTalents: s.learnedTalents ?? {}, // §28 — pre-talent saves know nothing
+    talentPoints: s.talentPoints ?? {}, // §28 — points accrue from the next level-up on
     enemies,
     monster: undefined, // collapse the legacy field so nothing reads it post-migration
     activeRound: staleRound ? undefined : ar,

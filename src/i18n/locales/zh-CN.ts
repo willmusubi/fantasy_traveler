@@ -49,6 +49,12 @@ export const zhCN: Record<string, string> = {
   'equip.astral_canvas': '星图残卷',
   'equip.starsight_ring': '星准指环',
   'equip.comet_charm': '彗心坠饰',
+  'equip.du_xing_blade': '淬星之刃',
+  'equip.xingchen_crown': '星辰冠冕',
+
+  // Duo skills (§28)
+  'duo.xinghuo_yeyu': '星火夜雨',
+  'duo.yeyu_yuguang': '夜雨愈光',
 
   // Stats (§25 ten-stat sheet)
   'stat.str': '力量',

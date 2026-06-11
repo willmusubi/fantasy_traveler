@@ -1146,3 +1146,49 @@ input, select, textarea { font-family: inherit; }
 @media (prefers-reduced-motion: reduce) {
   * { animation: none !important; transition: none !important; }
 }
+
+/* ---------- §28 rarity colors ---------- */
+/* .rarity-common = default --ink; no override needed. */
+.rarity-uncommon { color: #7ed957; }
+.rarity-rare    { color: #6fb1ff; }
+.rarity-epic    { color: #b48fff; }
+
+/* Small inline rarity label chip next to equipment names. */
+.rarity-chip {
+  display: inline-block; font-family: var(--font-pixel); font-size: 9px; line-height: 1;
+  padding: 2px 5px; border-radius: 4px; margin-left: 5px; vertical-align: middle;
+  background: rgba(10, 14, 40, 0.7); border: 1px solid currentColor;
+  opacity: 0.85;
+}
+
+/* Affix lines in gear-row / shop-row. */
+.gear-affix, .shop-affix {
+  font-size: 11px; color: #b48fff; white-space: nowrap;
+}
+
+/* ---------- §28 talent tree ---------- */
+.talent-points-label {
+  font-family: var(--font-pixel); font-size: 11px; color: var(--gold);
+  text-shadow: 1px 1px 0 var(--outline);
+}
+.talent-tree { display: flex; flex-direction: column; gap: 6px; }
+.talent-node {
+  background: var(--win-row); border: 2px solid rgba(241, 231, 198, 0.22);
+  border-radius: 6px; padding: 8px 11px;
+}
+.talent-node.learned { border-color: rgba(244, 198, 78, 0.55); background: rgba(244, 198, 78, 0.07); }
+.talent-node.learnable { border-color: rgba(95, 210, 154, 0.55); }
+.talent-node.locked { opacity: 0.6; }
+.talent-node-head {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 3px;
+}
+.talent-node-name {
+  font-family: var(--font-pixel); font-size: 11px; color: var(--ink); text-shadow: 1px 1px 0 var(--outline);
+}
+.talent-node.learned .talent-node-name { color: var(--gold); }
+.talent-learn-btn { font-size: 10px; padding: 3px 8px; box-shadow: 0 0 0 2px var(--outline), 0 1px 0 var(--outline); flex: none; }
+.talent-locked-reason { font-size: 10px; color: var(--ink-dim); white-space: nowrap; }
+.talent-node-desc { font-size: 11px; color: var(--ink-dim); line-height: 1.5; }
+
+/* ---------- §28 habit milestone hint ---------- */
+.milestone-hint { font-size: 10px; color: var(--gold); opacity: 0.85; }

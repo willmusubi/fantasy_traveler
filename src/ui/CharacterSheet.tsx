@@ -1,6 +1,7 @@
 import { rankForPoints } from '../companion/affinity'
 import { COMPANION_DEFS, profileFor } from '../companion/roster'
 import { allSkillsOf } from '../companion/skills'
+import { canLearn, talentTreeFor } from '../companion/talents'
 import { xpForLevel } from '../domain/config'
 import type { Stats } from '../domain/types'
 import { effectiveStats } from '../game/effectiveStats'
@@ -47,6 +48,7 @@ export function CharacterSheet({ characterId, onClose }: { characterId: string; 
   const gs = useGame((s) => s.gameState)
   const characters = useGame((s) => s.characters)
   const affinity = useGame((s) => s.affinities[characterId])
+  const learnTalent = useGame((s) => s.learnTalent)
   const deep = useSettings((s) => isDeepCombat(s.settings))
   const char = characters.find((c) => c.id === characterId)
   if (!gs || !char) return null
@@ -188,6 +190,57 @@ export function CharacterSheet({ characterId, onClose }: { characterId: string; 
             )
           })}
         </div>
+
+        {(() => {
+          const talentTree = talentTreeFor(char)
+          if (talentTree.length === 0) return null
+          const learned = gs.learnedTalents?.[char.id] ?? []
+          const points = gs.talentPoints?.[char.id] ?? 0
+          return (
+            <>
+              <div className="gear-section-label" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <span>天赋</span>
+                <span className="talent-points-label">可用天赋点 {points}</span>
+              </div>
+              <div className="talent-tree">
+                {talentTree.map((node) => {
+                  const isLearned = learned.includes(node.id)
+                  const isLearnable = !isLearned && canLearn(char, node.id, gs.learnedTalents, points) != null
+                  const hasPrereq = node.requires ? learned.includes(node.requires) : true
+                  const lockedReason = isLearned ? null
+                    : !hasPrereq ? `需先习得「${talentTree.find((n) => n.id === node.requires)?.name ?? node.requires}」`
+                    : points < node.cost ? `需 ${node.cost} 天赋点`
+                    : null
+                  return (
+                    <div
+                      key={node.id}
+                      className={`talent-node ${isLearned ? 'learned' : isLearnable ? 'learnable' : 'locked'}`}
+                      style={node.requires ? { marginLeft: 18 } : undefined}
+                    >
+                      <div className="talent-node-head">
+                        <span className="talent-node-name">
+                          {isLearned ? '✓ ' : ''}{node.name}
+                        </span>
+                        {!isLearned && isLearnable && (
+                          <button
+                            className="btn btn-ghost talent-learn-btn"
+                            onClick={() => void learnTalent(char.id, node.id)}
+                          >
+                            习得（{node.cost}点）
+                          </button>
+                        )}
+                        {!isLearned && !isLearnable && lockedReason && (
+                          <span className="talent-locked-reason">{lockedReason}</span>
+                        )}
+                      </div>
+                      <div className="talent-node-desc">{node.desc}</div>
+                    </div>
+                  )
+                })}
+              </div>
+            </>
+          )
+        })()}
 
         {bio && (
           <>

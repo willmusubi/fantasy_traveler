@@ -1,10 +1,19 @@
 import { useState } from 'react'
 import { localDateKey } from '../domain/dates'
 import { isHabitDueToday } from '../domain/habits'
+import { HABIT_MILESTONES } from '../domain/config'
 import type { Habit, RecurrenceRule, Weekday } from '../domain/types'
 import { byOrder, useHabits } from '../state/habitStore'
 
 const WEEKDAY_SHORT = ['日', '一', '二', '三', '四', '五', '六']
+
+/** Returns the next milestone threshold not yet reached, or null if all done. */
+function nextMilestone(habit: Habit): number | null {
+  for (const m of HABIT_MILESTONES) {
+    if (!habit.milestoneRewardedAt?.[String(m)]) return m
+  }
+  return null
+}
 
 function scheduleLabel(s: RecurrenceRule): string {
   if (s.kind === 'daily') return '每日'
@@ -110,6 +119,11 @@ function HabitRow({ habit, now, onEdit, drag }: { habit: Habit; now: Date; onEdi
               🔥 {habit.streak}
             </span>
           )}
+          {(() => {
+            const next = nextMilestone(habit)
+            if (next === null) return <span className="milestone-hint">🏅 100天达成</span>
+            return <span className="milestone-hint">🏅 {habit.streak}/{next}天</span>
+          })()}
           {offDay && <span className="habit-offday-tag">今日不需要</span>}
         </div>
       </div>

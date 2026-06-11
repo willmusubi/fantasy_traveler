@@ -101,6 +101,8 @@ interface GameStore {
   enterDungeon: (id: string) => Promise<void>
   /** Apply one random debuff (untilVictory) — fired when a habit's streak breaks. */
   applyRandomDebuff: () => Promise<void>
+  /** §28: spend talent points on a tree node (validated in the reducer; no-op when invalid). */
+  learnTalent: (characterId: ID, nodeId: string) => Promise<void>
   /** Plan a party member's action for the next task-executed round: a SkillId, or null = basic
    *  attack. Persists; used as the default in the step-through picker and by auto-resolve. */
   setRoundAction: (memberId: ID, skillId: SkillId | null) => Promise<void>
@@ -321,6 +323,8 @@ export const useGame = create<GameStore>((set, get) => ({
             toasts.push({ id: tid(), kind: 'levelup', text: `🎉 ${who?.name ?? '你'} 升到了 Lv.${who?.stats.level}！` })
           }
         }
+      } else if (e.type === 'habitMilestone') {
+        toasts.push({ id: tid(), kind: 'loot', text: `🏅 习惯里程碑达成：坚持 ${e.streak} 天！奖励：${e.rewardText}` })
       } else if (e.type === 'monsterGrew') {
         toasts.push({ id: tid(), kind: 'warn', text: `⚠️ 拖延让对手更强了，还趁机反扑！` })
       } else if (e.type === 'encounterCleared') {
@@ -450,6 +454,11 @@ export const useGame = create<GameStore>((set, get) => ({
     const queue = get().pendingBuffChoices
     if (queue.length === 0) return
     set({ pendingBuffChoices: queue.slice(1) })
+  },
+
+  async learnTalent(characterId, nodeId) {
+    const result = await dispatchEvent({ type: 'TalentLearned', characterId, nodeId })
+    get().ingestResult(result)
   },
 
   async chooseScriptOption(optionId) {

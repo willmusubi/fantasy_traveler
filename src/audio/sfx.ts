@@ -10,6 +10,7 @@ export type SfxName =
   | 'skill' | 'heal' | 'buff' | 'debuff'
   | 'status' | 'sleep' | 'guard' | 'telegraph' | 'phase'
   | 'downed' | 'wipe' | 'victory' | 'fanfare' | 'levelup'
+  | 'duo'
 
 interface Tone {
   /** Oscillator type, or 'noise' for a white-noise burst (impacts). */
@@ -78,6 +79,14 @@ const RECIPES: Record<SfxName, Tone[]> = {
     { wave: 'triangle', f0: 659, dur: 0.08, gain: 0.4 },
     { wave: 'triangle', f0: 880, dur: 0.08, gain: 0.4, at: 0.07 },
     { wave: 'triangle', f0: 1175, dur: 0.16, gain: 0.45, at: 0.14 },
+  ],
+  // Rising two-chord flourish for 羁绊连携技 — a warm ascending pair with a shimmer tail.
+  duo: [
+    { wave: 'square', f0: 523, dur: 0.12, gain: 0.42 },         // root (C5)
+    { wave: 'triangle', f0: 523, dur: 0.14, gain: 0.28, at: 0.02 }, // soft harmonic shimmer
+    { wave: 'square', f0: 784, dur: 0.14, gain: 0.44, at: 0.11 },   // fifth (G5) — the "resolve"
+    { wave: 'triangle', f0: 784, dur: 0.16, gain: 0.30, at: 0.13 }, // shimmer on the fifth
+    { wave: 'square', f0: 1047, dur: 0.22, gain: 0.38, at: 0.24 },  // octave (C6) — flourish peak
   ],
 }
 
