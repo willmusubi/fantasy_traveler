@@ -201,6 +201,23 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
           </div>
         </div>
 
+        <div className="field">
+          <label htmlFor="setting-bgm-volume">背景音乐（{settings.bgmVolume ?? 0}）</label>
+          <input
+            id="setting-bgm-volume"
+            type="range"
+            min={0}
+            max={100}
+            step={5}
+            value={settings.bgmVolume ?? 0}
+            onChange={(e) => void update({ bgmVolume: Number(e.target.value) })}
+            style={{ width: '100%' }}
+          />
+          <div style={{ fontSize: 11, color: 'var(--muted)', marginTop: 4, lineHeight: 1.6 }}>
+            芯片音乐循环（闲逛/战斗/Boss 随场景切换；日历区永远安静）。默认关闭——专注时不被打扰。
+          </div>
+        </div>
+
         {settings.tokenUsage && (
           <div className="field">
             <label>用量统计（自 {settings.tokenUsage.since.slice(0, 10)} 起）</label>

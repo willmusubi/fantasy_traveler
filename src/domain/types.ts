@@ -787,6 +787,9 @@ export interface Settings {
   battleFx?: boolean
   /** §27 synth SFX volume 0–100 (default 70; 0 = silent). */
   sfxVolume?: number
+  /** §30 chiptune BGM volume 0–100. Default 0 (OFF — a productivity app must not sing
+   *  uninvited); the settings slider opts in. */
+  bgmVolume?: number
   /** §29 cumulative token usage since `since` (cost meter; reset from the settings panel). */
   tokenUsage?: { input: number; output: number; cacheRead: number; cacheWrite: number; since: string }
 }

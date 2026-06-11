@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react'
+import { playBgm, setBgmVolume, stopBgm } from '../audio/bgm'
 import { selectPlayer, useGame } from '../state/gameStore'
+import { useSettings } from '../state/settingsStore'
 import { useTodos } from '../state/todoStore'
 import { BuffChoiceModal } from '../ui/BuffChoiceModal'
 import { ChatPanel } from '../ui/ChatPanel'
@@ -52,6 +54,20 @@ export function Dashboard() {
     const h = window.setInterval(() => void useTodos.getState().sweepTimers(), 1000)
     return () => window.clearInterval(h)
   }, [])
+
+  // §30 chiptune BGM: track follows the scene — calendar zone is SILENT by design (效率优先),
+  // adventure idles softly, a script-driven quest with a phased boss goes tense. Defaults OFF
+  // (bgmVolume 0); the settings slider opts in. AudioContext unlocks on the first interaction.
+  const bgmVolume = useSettings((s) => s.settings.bgmVolume ?? 0)
+  const inQuest = useGame((s) => Boolean(s.gameState?.activeQuestId))
+  const bossOnField = useGame((s) => Boolean(s.gameState?.enemies.some((m) => m.hp > 0 && m.archetype === 'boss')))
+  useEffect(() => {
+    setBgmVolume(bgmVolume)
+  }, [bgmVolume])
+  useEffect(() => {
+    if (zone !== 'adventure') stopBgm()
+    else playBgm(inQuest ? (bossOnField ? 'boss' : 'battle') : 'idle')
+  }, [zone, inQuest, bossOnField, bgmVolume])
 
   return (
     <div className="app">
