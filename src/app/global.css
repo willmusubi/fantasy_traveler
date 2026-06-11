@@ -384,9 +384,33 @@ input, select, textarea { font-family: inherit; }
   40%, 60% { transform: translate(7px, -2px); }
 }
 @keyframes fxFlash { from { opacity: 1; } to { opacity: 0; } }
+/* §32 camera punches — transform on .stage-scene so the DOM HUD and the canvas zoom AS ONE.
+   Declared after the shake rules on purpose: when a crit fires both, the zoom wins the
+   `animation` property and carries the beat. */
+.stage-scene.fx-zoom-light { animation: fxZoomLight 0.32s ease-out; }
+.stage-scene.fx-zoom-heavy { animation: fxZoomHeavy 0.46s ease-out; }
+@keyframes fxZoomLight { 30% { transform: scale(1.045); } 100% { transform: scale(1); } }
+@keyframes fxZoomHeavy { 25% { transform: scale(1.075); } 100% { transform: scale(1); } }
+
+/* §32 scene mode — the canvas owns bodies + atmosphere; the DOM keeps every information
+   surface. visibility (NOT display): layout is preserved so data-fx-anchor rects keep
+   measuring and click targets keep their footprint. Applied by BattleCanvas only AFTER the
+   Pixi scene actually initialized — a WebGL failure leaves the DOM sprites untouched. */
+.stage-scene.scene-on { height: 330px; }
+/* In scene mode the canvas paints an OPAQUE backdrop — it must sit UNDER the DOM info
+   layer (names/bars/chips at z2), not over it like the transparent §27 overlay does. */
+.stage-scene.scene-on .battle-canvas { z-index: 1; }
+.stage-scene.scene-on .stage-sky,
+.stage-scene.scene-on .stage-ground,
+.stage-scene.scene-on .bsprite-body,
+.stage-scene.scene-on .bsprite-shadow,
+.stage-scene.scene-on .enemy-card-sprite,
+.stage-scene.scene-on .enemy-card-shadow { visibility: hidden; }
+
 @media (prefers-reduced-motion: reduce) {
   .battle-canvas { display: none; }
   .stage-scene.fx-shake, .stage-scene.fx-shake-heavy { animation: none; }
+  .stage-scene.fx-zoom-light, .stage-scene.fx-zoom-heavy { animation: none; }
   .stage-scene.fx-flash::after { animation: none; opacity: 0; }
 }
 
@@ -1153,6 +1177,7 @@ input, select, textarea { font-family: inherit; }
   .toasts { top: 60px; left: 10px; right: 10px; }
   .toast { min-width: 0; max-width: none; }
   .stage-scene { height: 200px; }
+  .stage-scene.scene-on { height: 240px; }
   .monster-sprite { font-size: 66px; }
   .party-side { gap: 12px; left: 9%; }
   .bsprite { width: 56px; }

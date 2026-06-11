@@ -34,7 +34,7 @@ const WHITE = 0xffffff
  *  Pixi app calls loseContext(), and a canvas's WebGL context is PERMANENT — under React
  *  StrictMode's dev double-mount the second init would inherit a dead context and present
  *  nothing, i.e. an uninitialized white buffer. A Pixi-owned canvas per mount is immune). */
-export async function createFxStage(host: HTMLElement): Promise<FxStageHandle> {
+export async function initPixiApp(host: HTMLElement): Promise<Application> {
   const app = new Application()
   await app.init({
     backgroundAlpha: 0,
@@ -52,8 +52,23 @@ export async function createFxStage(host: HTMLElement): Promise<FxStageHandle> {
     bgAlpha: app.renderer.background.alpha,
     tickerStarted: app.ticker.started,
   }
-  const layer = new Container()
-  app.stage.addChild(layer)
+  return app
+}
+
+/** Tear an app down without leaving its dead canvas in the host. */
+export function destroyPixiApp(app: Application): void {
+  try {
+    const canvas = app.canvas
+    app.destroy(false, { children: true })
+    canvas.remove()
+  } catch {
+    /* double-destroy on hot-reload is harmless */
+  }
+}
+
+/** The §27 cue → particle spawner mapping, attachable to ANY app+layer (the plain FX
+ *  overlay and the §32 scene stage share it — one source of truth for what a hit looks like). */
+export function createParticleEngine(app: Application, layer: Container): { play: FxStageHandle['play'] } {
   const particles: Particle[] = []
 
   app.ticker.add((ticker) => {
@@ -171,16 +186,17 @@ export async function createFxStage(host: HTMLElement): Promise<FxStageHandle> {
     particles.push({ node: dot(x, y, 9, WHITE), vx: 0, vy: 0, gravity: 0, life: 0, ttl: 0.14, grow: 2 })
   }
 
+  return { play }
+}
+
+/** The plain §27 FX overlay: a transparent canvas with just the particle engine. */
+export async function createFxStage(host: HTMLElement): Promise<FxStageHandle> {
+  const app = await initPixiApp(host)
+  const layer = new Container()
+  app.stage.addChild(layer)
+  const engine = createParticleEngine(app, layer)
   return {
-    play,
-    destroy: () => {
-      try {
-        const canvas = app.canvas
-        app.destroy(false, { children: true })
-        canvas.remove() // pull the dead canvas out of the host
-      } catch {
-        /* double-destroy on hot-reload is harmless */
-      }
-    },
+    play: engine.play,
+    destroy: () => destroyPixiApp(app),
   }
 }
