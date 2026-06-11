@@ -17,6 +17,7 @@ import type {
 } from '../domain/types'
 import { withStatsDefaults } from '../companion/roster'
 import { withMonsterDefaults } from '../game/combat'
+import { decryptString, encryptString, isEncrypted } from './crypto'
 import { getDB, SINGLETON } from './db'
 
 export const charactersRepo = {
@@ -233,11 +234,20 @@ const DEFAULT_SETTINGS: Settings = {
 }
 
 export const settingsRepo = {
+  /** §31 — the apiKey decrypts transparently on read. A key sealed by ANOTHER device
+   *  (a restored save slot / copied profile) fails closed → reads as "no key set".
+   *  A legacy PLAINTEXT key passes through here and gets sealed on the next put. */
   async get(): Promise<Settings> {
     const s = await (await getDB()).get('settings', SINGLETON)
-    return s ?? DEFAULT_SETTINGS
+    if (!s) return DEFAULT_SETTINGS
+    if (s.apiKey && isEncrypted(s.apiKey)) {
+      return { ...s, apiKey: await decryptString(s.apiKey) }
+    }
+    return s
   },
+  /** §31 — the apiKey is sealed (AES-GCM, device key) before it touches the store. */
   async put(s: Settings): Promise<void> {
-    await (await getDB()).put('settings', s, SINGLETON)
+    const sealed = s.apiKey && !isEncrypted(s.apiKey) ? { ...s, apiKey: await encryptString(s.apiKey) } : s
+    await (await getDB()).put('settings', sealed, SINGLETON)
   },
 }

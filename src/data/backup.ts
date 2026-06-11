@@ -75,18 +75,46 @@ export async function downloadBackup(): Promise<void> {
   URL.revokeObjectURL(url)
 }
 
-/** Parse + lightly validate an uploaded backup file. */
+/** §31 structural validation — catches a corrupt/foreign file BEFORE the atomic import
+ *  clears every store (an exception mid-import aborts the tx, but the error it surfaces
+ *  is cryptic; this names the problem). Empty result = valid. Missing store fields are
+ *  fine (older payloads predate newer stores); present ones must be arrays of records
+ *  carrying the store's primary key. */
+export function validateBackupPayload(data: unknown): string[] {
+  if (!data || typeof data !== 'object') return ['文件不是 JSON 对象']
+  const d = data as Record<string, unknown>
+  const errs: string[] = []
+  if (d.app !== 'fantasy-traveler') errs.push('不是幻想旅人的存档文件')
+  for (const spec of BACKUP_SPECS) {
+    if (spec.keyPath === null) continue
+    const arr = d[spec.name]
+    if (arr === undefined) continue
+    if (!Array.isArray(arr)) {
+      errs.push(`「${spec.name}」损坏：应为数组`)
+      continue
+    }
+    for (const rec of arr) {
+      if (!rec || typeof rec !== 'object' || (rec as Record<string, unknown>)[spec.keyPath] == null) {
+        errs.push(`「${spec.name}」中存在缺少主键「${spec.keyPath}」的记录`)
+        break
+      }
+    }
+  }
+  return errs
+}
+
+/** Parse + validate an uploaded backup file. */
 export async function readBackupFile(file: File): Promise<BackupPayload> {
   const data = JSON.parse(await file.text())
-  if (!data || data.app !== 'fantasy-traveler' || !Array.isArray(data.characters)) {
-    throw new Error('文件不是有效的幻想旅人存档')
-  }
+  const problems = validateBackupPayload(data)
+  if (problems.length > 0) throw new Error(`文件不是有效的幻想旅人存档：${problems[0]}`)
   return data as BackupPayload
 }
 
 /** Replace ALL stores with the payload's contents (atomic). Caller should reload afterwards. */
 export async function importAll(payload: BackupPayload): Promise<{ records: number }> {
-  if (!payload || payload.app !== 'fantasy-traveler') throw new Error('文件不是有效的幻想旅人存档')
+  const problems = validateBackupPayload(payload)
+  if (problems.length > 0) throw new Error(`文件不是有效的幻想旅人存档：${problems[0]}`)
   const db = await getDB()
   const present = ALL_STORES.filter((name) => db.objectStoreNames.contains(name))
   const tx = db.transaction(present, 'readwrite')

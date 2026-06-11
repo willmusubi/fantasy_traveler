@@ -52,7 +52,7 @@ describe('backup export/import', () => {
     await seed()
     const p = await exportAll()
     expect(p.app).toBe('fantasy-traveler')
-    expect(p.dbVersion).toBe(8)
+    expect(p.dbVersion).toBe(9) // §31 keystore
     expect(p.characters).toHaveLength(1)
     expect(p.todos).toHaveLength(1)
     expect(p.habits).toHaveLength(1)

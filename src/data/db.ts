@@ -40,10 +40,13 @@ export interface FTSchema extends DBSchema {
   // v6: named in-app save slots (full-DB snapshots). Deliberately NOT in backup.ts's
   // ALL_STORES, so restoring/clearing game data never wipes the slots themselves.
   saves: { key: string; value: SaveSlot }
+  // v9 (§31): device crypto key (JWK) for at-rest API-key encryption. NOT in ALL_STORES
+  // (backups must never carry the key material that decrypts them).
+  keystore: { key: string; value: JsonWebKey }
 }
 
 const DB_NAME = 'fantasy-traveler'
-const DB_VERSION = 8
+const DB_VERSION = 9
 
 let dbPromise: Promise<IDBPDatabase<FTSchema>> | null = null
 
@@ -71,6 +74,7 @@ export const STORE_SPECS: Array<{
   { name: 'habits', keyPath: 'id', indexes: [{ name: 'by_order', keyPath: 'order' }] },
   { name: 'dungeons', keyPath: 'id', indexes: [{ name: 'by_world', keyPath: 'worldId' }] },
   { name: 'saves', keyPath: 'id' },
+  { name: 'keystore', keyPath: null },
 ]
 
 /** Create any missing store (and any missing index on an existing store). Idempotent and
@@ -180,6 +184,12 @@ export function getDB(): Promise<IDBPDatabase<FTSchema>> {
           // create-block for ANY store (e.g. `quests`/`habits` missing on a v7 DB) — which made
           // exportAll's all-stores transaction hard-crash "object store not found" on every save.
           // ensureAllStores recreates whatever's missing from one declarative spec. No-op when healthy.
+          ensureAllStores(db, tx)
+        }
+        if (oldVersion < 9) {
+          // v9 (§31): keystore for at-rest API-key encryption. ensureAllStores covers the
+          // create (it's in STORE_SPECS) — run it again so the version bump and the create
+          // land in the SAME edit (the v7 HMR lesson). No-op when healthy.
           ensureAllStores(db, tx)
         }
       },
