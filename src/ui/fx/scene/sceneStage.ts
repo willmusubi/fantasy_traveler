@@ -87,9 +87,11 @@ export async function createSceneStage(host: HTMLElement, measure: MeasureBase):
     const targetH =
       art.kind === 'fullbody' || art.kind === 'enemy'
         ? hostH() * 0.56 * sizeMult
-        : art.kind === 'pixel' || art.kind === 'sheet'
-          ? hostH() * 0.46 * sizeMult
-          : hostH() * 0.3 // head token / emoji stay near the DOM sprite size
+        : art.kind === 'sheet'
+          ? hostH() * 0.28 * sizeMult // chibi sheets fill ~99% of their frame; 0.28 keeps the compact FF-party scale (user-tuned)
+          : art.kind === 'pixel'
+            ? hostH() * 0.46 * sizeMult
+            : hostH() * 0.3 // head token / emoji stay near the DOM sprite size
     const actor = new FigureActor(app, {
       id: spec.id,
       art,

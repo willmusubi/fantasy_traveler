@@ -253,7 +253,9 @@ export class FigureActor extends Container {
   /** Victory hop (outBack overshoot). */
   victory(): void {
     if (this.destroyed || this.isDowned) return
-    this.playSheet('victory', false)
+    // Hold the pose: victory is a terminal beat (battle ends / scene unmounts); a
+    // single-frame victory anim returning to idle after ~140ms would barely register.
+    this.playSheet('victory', true)
     this.bag.add(
       tween(this.app, {
         duration: 0.55,

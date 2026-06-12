@@ -414,6 +414,10 @@ input, select, textarea { font-family: inherit; }
 .stage-scene.scene-on .party-side .bsprite:nth-child(3) { margin-bottom: 8px; }
 .stage-scene.scene-on .enemy-side .enemy-card:nth-child(2) { margin-bottom: 14px; }
 .stage-scene.scene-on .enemy-side .enemy-card:nth-child(3) { margin-bottom: 26px; }
+/* The move pill sits in flow atop the (hidden) 52px emoji box, but canvas sheet chibis
+   stand 0.28 × the 330px stage ≈ 92px tall — without a lift the pill lands on the face.
+   transform is paint-only: layout and the data-fx-anchor feet rects stay untouched. */
+.stage-scene.scene-on .bsprite-action { transform: translateY(-36px); }
 
 @media (prefers-reduced-motion: reduce) {
   .battle-canvas { display: none; }
@@ -1188,6 +1192,8 @@ input, select, textarea { font-family: inherit; }
   .toast { min-width: 0; max-width: none; }
   .stage-scene { height: 200px; }
   .stage-scene.scene-on { height: 240px; }
+  /* 240px stage → chibi ≈ 67px vs a 34px-font body box: smaller lift clears the face. */
+  .stage-scene.scene-on .bsprite-action { transform: translateY(-30px); }
   .monster-sprite { font-size: 66px; }
   .party-side { gap: 12px; left: 9%; }
   .bsprite { width: 56px; }
