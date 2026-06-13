@@ -45,6 +45,7 @@ export async function exportAll(): Promise<BackupPayload> {
     quests: await getAll('quests'),
     habits: await getAll('habits'),
     dungeons: await getAll('dungeons'),
+    realityQuests: await getAll('realityQuests'),
     gameState: (has('gameState') ? await tx.objectStore('gameState').get(SINGLETON) : null) ?? null,
     settings: (has('settings') ? await tx.objectStore('settings').get(SINGLETON) : null) ?? null,
     meta: (has('meta') ? await tx.objectStore('meta').get(SINGLETON) : null) ?? null,

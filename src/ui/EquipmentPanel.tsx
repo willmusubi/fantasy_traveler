@@ -102,6 +102,7 @@ export function EquipmentPanel() {
               <span className="gear-bonus">{bonusText(e.defId)}</span>
               {affixes.map((line, i) => <span key={i} className="gear-affix">{line}</span>)}
               <button className="btn btn-ghost gear-btn" onClick={() => unequip(e.instanceId)}>卸下</button>
+              {def?.description && <span className="gear-desc">{def.description}</span>}
             </div>
           )
         })}
@@ -127,6 +128,7 @@ export function EquipmentPanel() {
               <button className="btn gear-btn" onClick={() => equip(e.instanceId, selected.id)}>
                 装备
               </button>
+              {def?.description && <span className="gear-desc">{def.description}</span>}
             </div>
           )
         })}

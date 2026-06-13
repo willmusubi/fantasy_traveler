@@ -888,7 +888,7 @@ input, select, textarea { font-family: inherit; }
 .meeting-line { font-size: 14px; line-height: 1.7; color: var(--ink); margin: 6px 0; }
 
 /* ---------- Worldview UI (tabs, party, equipment) ---------- */
-.tabbar { display: flex; gap: 8px; }
+.tabbar { display: flex; gap: 8px; flex-wrap: wrap; }
 .tabbar button {
   font-family: var(--font-pixel); font-size: 11px; color: var(--ink-dim);
   background: linear-gradient(180deg, rgba(74, 92, 171, 0.4), rgba(40, 53, 112, 0.4));
@@ -896,6 +896,42 @@ input, select, textarea { font-family: inherit; }
   box-shadow: 0 0 0 2px var(--outline); border-bottom: none;
 }
 .tabbar button.on { color: var(--gold); border-color: var(--frame); background: linear-gradient(180deg, var(--win-1), var(--win-2)); }
+
+/* ---------- Reality Oracle ---------- */
+.reality-panel { display: flex; flex-direction: column; gap: 14px; }
+.reality-panel .panel-title { margin-bottom: 0; }
+.reality-status { font-family: var(--font-pixel); font-size: 10px; padding: 4px 7px; border: 1px solid var(--frame-gold); border-radius: 999px; }
+.reality-status.active { color: var(--gold); }
+.reality-status.settled { color: var(--good); border-color: var(--good); }
+.reality-intro, .reality-empty { color: var(--ink-dim); font-size: 12px; line-height: 1.7; }
+.reality-source-form label { display: block; color: var(--ink-dim); font-size: 11px; margin-bottom: 7px; }
+.reality-source-row { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 9px; }
+.reality-card { padding: 13px; border: 2px solid rgba(241, 231, 198, 0.24); border-radius: 7px; background: var(--win-row); }
+.reality-card-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.reality-quest-title { font-family: var(--font-pixel); font-size: 12px; color: var(--gold); margin-bottom: 5px; }
+.reality-card a { color: var(--mp); font-size: 11px; }
+.reality-reward { color: var(--ink-dim); font-size: 11px; text-align: right; }
+.reality-progress-label { display: flex; justify-content: space-between; gap: 8px; margin: 16px 0 7px; font-size: 11px; color: var(--ink-dim); }
+.reality-progress-label strong { color: var(--ink); }
+.reality-progress { height: 12px; overflow: hidden; border: 2px solid var(--frame); border-radius: 5px; background: var(--win-sunken); box-shadow: 0 0 0 2px var(--outline); }
+.reality-progress > div { height: 100%; background: linear-gradient(180deg, #82e2b4, #3fa97a); transition: width 0.45s ease-out; }
+.reality-evidence { display: flex; flex-direction: column; gap: 4px; margin-top: 13px; padding: 9px; border-left: 3px solid var(--frame-gold); background: rgba(10, 13, 40, 0.32); font-size: 11px; }
+.reality-evidence span, .reality-evidence small { color: var(--ink-dim); }
+.reality-settled { margin-top: 13px; padding: 9px; color: var(--good); border: 1px solid rgba(95, 210, 154, 0.55); border-radius: 6px; background: rgba(30, 92, 67, 0.2); font-size: 11px; }
+.reality-milestones { display: flex; flex-direction: column; gap: 8px; margin-top: 13px; }
+.reality-milestone { display: flex; gap: 10px; align-items: flex-start; padding: 9px; border: 1px solid rgba(241, 231, 198, 0.22); border-radius: 6px; background: rgba(10, 13, 40, 0.22); }
+.reality-milestone.settled { border-color: rgba(95, 210, 154, 0.55); background: rgba(30, 92, 67, 0.2); }
+.reality-milestone-mark { min-width: 34px; color: var(--gold); font-family: var(--font-pixel); font-size: 11px; text-align: center; }
+.reality-milestone.settled .reality-milestone-mark { color: var(--good); }
+.reality-milestone strong, .reality-milestone span { display: block; }
+.reality-milestone strong { color: var(--ink); font-size: 12px; margin-bottom: 4px; }
+.reality-milestone span { color: var(--ink-dim); font-size: 11px; line-height: 1.6; }
+.reality-verify { width: 100%; margin-top: 14px; }
+@media (max-width: 520px) {
+  .reality-source-row { grid-template-columns: 1fr; }
+  .reality-card-head, .reality-progress-label { flex-direction: column; }
+  .reality-reward { text-align: left; }
+}
 
 .member-pills { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 14px; }
 .pill {
@@ -918,7 +954,7 @@ input, select, textarea { font-family: inherit; }
 .gear-section-label { font-family: var(--font-pixel); font-size: 11px; color: var(--frame-gold); margin: 12px 0 8px; }
 .gear-list { display: flex; flex-direction: column; gap: 7px; }
 .gear-empty { color: var(--ink-dim); font-size: 12px; padding: 10px; text-align: center; }
-.gear-row { display: flex; align-items: center; gap: 9px; padding: 8px 11px; background: var(--win-row); border: 2px solid rgba(241, 231, 198, 0.2); border-radius: 6px; }
+.gear-row { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; padding: 8px 11px; background: var(--win-row); border: 2px solid rgba(241, 231, 198, 0.2); border-radius: 6px; }
 .gear-slot { font-size: 10px; color: var(--ink-dim); min-width: 28px; }
 .gear-name { font-size: 13px; flex: 1; min-width: 0; }
 .gear-bonus { font-size: 11px; color: var(--good); white-space: nowrap; }
@@ -1223,6 +1259,7 @@ input, select, textarea { font-family: inherit; }
 .rarity-uncommon { color: #7ed957; }
 .rarity-rare    { color: #6fb1ff; }
 .rarity-epic    { color: #b48fff; }
+.rarity-legendary { color: #ff9f43; text-shadow: 0 0 8px rgba(255, 159, 67, 0.45); }
 
 /* Small inline rarity label chip next to equipment names. */
 .rarity-chip {
@@ -1236,6 +1273,7 @@ input, select, textarea { font-family: inherit; }
 .gear-affix, .shop-affix {
   font-size: 11px; color: #b48fff; white-space: nowrap;
 }
+.gear-desc { flex: 0 0 100%; color: var(--ink-dim); font-size: 11px; line-height: 1.6; white-space: normal; }
 
 /* ---------- §28 talent tree ---------- */
 .talent-points-label {

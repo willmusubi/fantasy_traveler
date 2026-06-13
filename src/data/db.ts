@@ -13,6 +13,7 @@ import type {
   Habit,
   JournalEntry,
   Quest,
+  RealityQuest,
   SaveSlot,
   Settings,
   Todo,
@@ -43,10 +44,12 @@ export interface FTSchema extends DBSchema {
   // v9 (§31): device crypto key (JWK) for at-rest API-key encryption. NOT in ALL_STORES
   // (backups must never carry the key material that decrypts them).
   keystore: { key: string; value: JsonWebKey }
+  // v10: deterministic external-fact claims and their evidence history.
+  realityQuests: { key: string; value: RealityQuest; indexes: { by_status: string } }
 }
 
 const DB_NAME = 'fantasy-traveler'
-const DB_VERSION = 9
+const DB_VERSION = 10
 
 let dbPromise: Promise<IDBPDatabase<FTSchema>> | null = null
 
@@ -75,6 +78,7 @@ export const STORE_SPECS: Array<{
   { name: 'dungeons', keyPath: 'id', indexes: [{ name: 'by_world', keyPath: 'worldId' }] },
   { name: 'saves', keyPath: 'id' },
   { name: 'keystore', keyPath: null },
+  { name: 'realityQuests', keyPath: 'id', indexes: [{ name: 'by_status', keyPath: 'status' }] },
 ]
 
 /** Create any missing store (and any missing index on an existing store). Idempotent and
@@ -190,6 +194,10 @@ export function getDB(): Promise<IDBPDatabase<FTSchema>> {
           // v9 (§31): keystore for at-rest API-key encryption. ensureAllStores covers the
           // create (it's in STORE_SPECS) — run it again so the version bump and the create
           // land in the SAME edit (the v7 HMR lesson). No-op when healthy.
+          ensureAllStores(db, tx)
+        }
+        if (oldVersion < 10) {
+          // v10: Reality Oracle claims. The declarative self-heal creates the store and index.
           ensureAllStores(db, tx)
         }
       },

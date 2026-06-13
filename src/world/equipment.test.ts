@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { WEAPON_CATEGORY } from '../domain/config'
 import { EQUIPMENT_DEFS, getWorldEquipment } from './equipment'
 
 describe('getWorldEquipment', () => {
@@ -68,5 +69,22 @@ describe('§28 rarity tags', () => {
     const [a0, a1] = crown.affixes!
     expect(a0).toMatchObject({ kind: 'pctStat', stat: 'spd', pct: 0.08 })
     expect(a1).toMatchObject({ kind: 'critBonus', pct: 4 })
+  })
+})
+
+describe('Fantasy Traveler reality rewards', () => {
+  it('金钱镖 is a piercing weapon with its audience-funded story', () => {
+    const dart = EQUIPMENT_DEFS.money_dart
+    expect(dart.slot).toBe('weapon')
+    expect(dart.weaponKind).toBe('dart')
+    expect(WEAPON_CATEGORY[dart.weaponKind!]).toBe('pierce')
+    expect(dart.description).toBe('众筹来了第一把趁手的武器，上面印有一个“币”的字样。')
+  })
+
+  it('吉语钱 is an orange legendary trinket with its transformation story', () => {
+    const coin = EQUIPMENT_DEFS.lucky_coin
+    expect(coin.slot).toBe('trinket')
+    expect(coin.rarity).toBe('legendary')
+    expect(coin.description).toBe('其中一个金钱镖，突然发出金光，一声回响传入耳中“你币有了”。')
   })
 })

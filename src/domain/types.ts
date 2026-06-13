@@ -31,7 +31,7 @@ export type PhysKind = 'slash' | 'pierce' | 'strike' | 'arcane'
  *  匕首 (daggers) are authored as `sword` by convention. */
 export type WeaponKind =
   | 'sword' | 'katana' | 'axe' // 剑→pierce 刺；刀 斧→slash 斩
-  | 'spear' | 'halberd' | 'bow' // 枪 弓→pierce 刺；戟→slash 斩
+  | 'spear' | 'halberd' | 'bow' | 'dart' // 枪 弓 镖→pierce 刺；戟→slash 斩
   | 'fist' | 'hammer' | 'club' // 拳 锤 棍 → strike 打
   | 'rod' | 'fan' | 'qin' // 杖 扇 琴 → arcane 法
 
@@ -360,11 +360,47 @@ export interface OwnedEquipment {
   acquiredAt: string
 }
 
+// ---------- Reality Oracle ----------
+
+export type RealityProvider = 'bilibili-video' | 'bilibili-season'
+export type RealityMetric = 'coin'
+export type RealityQuestStatus = 'active' | 'settled'
+
+/** A timestamped observation from an external source. It is evidence, not an AI opinion. */
+export interface RealityEvidence {
+  provider: RealityProvider
+  metric: RealityMetric
+  sourceRef: string
+  value: number
+  sourceUrl: string
+  observedAt: string
+  title?: string
+  ownerName?: string
+  ownerMid?: number
+  videoCount?: number
+}
+
+/** A deterministic external claim whose reward can be settled exactly once. */
+export interface RealityQuest {
+  id: ID
+  title: string
+  provider: RealityProvider
+  metric: RealityMetric
+  sourceRef: string
+  threshold: number
+  rewardEquipmentDefId: string
+  status: RealityQuestStatus
+  evidence: RealityEvidence[]
+  createdAt: string
+  updatedAt: string
+  settledAt?: string
+}
+
 // ---------- §28 growth systems: rarity / affixes / talents ----------
 
 /** §28 equipment rarity — display tier + affix-budget convention (no hidden mechanics:
  *  a rarity itself does nothing; its affixes do). Missing = 'common'. */
-export type EquipRarity = 'common' | 'uncommon' | 'rare' | 'epic'
+export type EquipRarity = 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary'
 
 /** §28 equipment affix — a special property beyond flat stat bonuses. */
 export type EquipAffix =
@@ -826,6 +862,7 @@ export interface BackupPayload {
   quests: unknown[]
   habits: unknown[]
   dungeons: unknown[]
+  realityQuests: unknown[]
   gameState: unknown | null
   settings: unknown | null
   meta: unknown | null

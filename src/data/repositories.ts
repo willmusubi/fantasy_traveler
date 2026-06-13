@@ -12,11 +12,14 @@ import type {
   Habit,
   JournalEntry,
   Quest,
+  RealityEvidence,
+  RealityQuest,
   Settings,
   Todo,
 } from '../domain/types'
 import { withStatsDefaults } from '../companion/roster'
 import { withMonsterDefaults } from '../game/combat'
+import { evaluateThreshold } from '../reality/oracle'
 import { decryptString, encryptString, isEncrypted } from './crypto'
 import { getDB, SINGLETON } from './db'
 
@@ -163,6 +166,67 @@ export const questsRepo = {
   },
   async put(q: Quest): Promise<void> {
     await (await getDB()).put('quests', q)
+  },
+}
+
+const MAX_REALITY_EVIDENCE = 20
+
+export const realityQuestsRepo = {
+  async all(): Promise<RealityQuest[]> {
+    return (await getDB()).getAll('realityQuests')
+  },
+  async get(id: string): Promise<RealityQuest | undefined> {
+    return (await getDB()).get('realityQuests', id)
+  },
+  async put(q: RealityQuest): Promise<void> {
+    await (await getDB()).put('realityQuests', q)
+  },
+  async recordEvidenceAndSettle(id: string, evidence: RealityEvidence): Promise<{
+    quest: RealityQuest
+    granted: boolean
+    gameState?: GameState
+  }> {
+    const db = await getDB()
+    const tx = db.transaction(['realityQuests', 'gameState'], 'readwrite')
+    const questStore = tx.objectStore('realityQuests')
+    const gameStore = tx.objectStore('gameState')
+    const current = await questStore.get(id)
+    if (!current) {
+      tx.abort()
+      throw new Error('现实任务不存在')
+    }
+
+    const evidenceHistory = [...current.evidence, evidence].slice(-MAX_REALITY_EVIDENCE)
+    const shouldSettle = current.status === 'active' && evaluateThreshold(current, evidence).passed
+    const rawGameState = shouldSettle ? await gameStore.get(SINGLETON) : undefined
+    const granted = Boolean(shouldSettle && rawGameState)
+    const updated: RealityQuest = {
+      ...current,
+      evidence: evidenceHistory,
+      updatedAt: evidence.observedAt,
+      status: granted ? 'settled' : current.status,
+      settledAt: granted ? evidence.observedAt : current.settledAt,
+    }
+    await questStore.put(updated)
+
+    let gameState: GameState | undefined
+    if (granted && rawGameState) {
+      gameState = withGameStateDefaults(rawGameState)
+      gameState = {
+        ...gameState,
+        ownedEquipment: [
+          ...gameState.ownedEquipment,
+          {
+            instanceId: crypto.randomUUID(),
+            defId: current.rewardEquipmentDefId,
+            acquiredAt: evidence.observedAt,
+          },
+        ],
+      }
+      await gameStore.put(gameState, SINGLETON)
+    }
+    await tx.done
+    return { quest: updated, granted, gameState }
   },
 }
 

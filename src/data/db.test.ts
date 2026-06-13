@@ -48,7 +48,7 @@ describe('db self-heal (v8 ensureAllStores)', () => {
     _resetDbForTests()
 
     const db = await getDB() // upgrades 7 → 8, ensureAllStores recreates whatever's missing
-    for (const store of ['todos', 'affinity', 'quests', 'habits', 'dungeons', 'saves', 'gameState'] as const) {
+    for (const store of ['todos', 'affinity', 'quests', 'habits', 'dungeons', 'saves', 'gameState', 'realityQuests'] as const) {
       expect(db.objectStoreNames.contains(store)).toBe(true)
     }
 
@@ -60,7 +60,7 @@ describe('db self-heal (v8 ensureAllStores)', () => {
   it('leaves a healthy fresh DB intact (self-heal is a no-op)', async () => {
     const db = await getDB() // fresh create at v8
     // Every declared store is present after a clean open.
-    for (const store of ['characters', 'todos', 'journalEntries', 'calendarEvents', 'affinity', 'gameState', 'chatThreads', 'chatMessages', 'settings', 'meta', 'quests', 'habits', 'dungeons', 'saves'] as const) {
+    for (const store of ['characters', 'todos', 'journalEntries', 'calendarEvents', 'affinity', 'gameState', 'chatThreads', 'chatMessages', 'settings', 'meta', 'quests', 'habits', 'dungeons', 'saves', 'realityQuests'] as const) {
       expect(db.objectStoreNames.contains(store)).toBe(true)
     }
   })

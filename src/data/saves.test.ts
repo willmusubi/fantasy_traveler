@@ -40,7 +40,7 @@ describe('save slots', () => {
     const slot = await createSave('剧情前·序章')
 
     expect(slot.name).toBe('剧情前·序章')
-    expect(slot.dbVersion).toBe(9) // §31 keystore
+    expect(slot.dbVersion).toBe(10) // Reality Oracle
     expect(slot.bytes).toBeGreaterThan(0)
     expect((slot.payload.gameState as GameState).gold).toBe(42)
 
@@ -147,7 +147,7 @@ describe('save slots', () => {
     // Re-opening via the app (getDB → v8) must heal the missing stores, not throw.
     await seed(77)
     const slot = await createSave('修复后')
-    expect(slot.dbVersion).toBe(9) // §31 keystore
+    expect(slot.dbVersion).toBe(10) // Reality Oracle
     expect((slot.payload.gameState as GameState).gold).toBe(77)
     expect(slot.payload.quests).toEqual([]) // store was recreated, reads as empty
     expect(await savesRepo.list()).toHaveLength(1)

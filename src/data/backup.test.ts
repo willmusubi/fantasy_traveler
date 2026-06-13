@@ -11,7 +11,7 @@ import { affinityRepo, charactersRepo, gameStateRepo, habitsRepo, journalRepo, t
 const EMPTY: BackupPayload = {
   app: 'fantasy-traveler', dbVersion: 4, exportedAt: '',
   characters: [], todos: [], journalEntries: [], calendarEvents: [], affinity: [],
-  chatThreads: [], chatMessages: [], quests: [], habits: [], dungeons: [], gameState: null, settings: null, meta: null,
+  chatThreads: [], chatMessages: [], quests: [], habits: [], dungeons: [], realityQuests: [], gameState: null, settings: null, meta: null,
 }
 
 const player: Character = {
@@ -52,7 +52,7 @@ describe('backup export/import', () => {
     await seed()
     const p = await exportAll()
     expect(p.app).toBe('fantasy-traveler')
-    expect(p.dbVersion).toBe(9) // §31 keystore
+    expect(p.dbVersion).toBe(10) // Reality Oracle
     expect(p.characters).toHaveLength(1)
     expect(p.todos).toHaveLength(1)
     expect(p.habits).toHaveLength(1)

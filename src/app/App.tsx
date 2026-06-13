@@ -3,6 +3,7 @@ import { useChat } from '../state/chatStore'
 import { registerSavedDungeonScripts, useGame } from '../state/gameStore'
 import { useHabits } from '../state/habitStore'
 import { useJournal } from '../state/journalStore'
+import { useReality } from '../state/realityStore'
 import { useSettings } from '../state/settingsStore'
 import { useTodos } from '../state/todoStore'
 import { ErrorBoundary } from '../ui/ErrorBoundary'
@@ -35,6 +36,7 @@ export function App() {
         await useTodos.getState().hydrate()
         await useHabits.getState().hydrate()
         await useJournal.getState().hydrate()
+        await useReality.getState().hydrate()
         await useChat.getState().hydrate()
       } catch (e) {
         console.error('[boot] hydrate failed', e)
@@ -44,6 +46,7 @@ export function App() {
       clearTimeout(watchdog)
       setBootStuck(false)
       setBooted(true)
+      void useReality.getState().verifyDue()
       // Overdue + habit-streak sweeps run on load (and on tab focus) — only once a game exists.
       if (useGame.getState().gameState) {
         await useTodos.getState().sweepOverdue()
@@ -57,6 +60,7 @@ export function App() {
         void useTodos.getState().sweepOverdue()
         void useTodos.getState().sweepTimers()
         void useHabits.getState().sweepHabits()
+        void useReality.getState().verifyDue()
       }
     }
     document.addEventListener('visibilitychange', onVisible)

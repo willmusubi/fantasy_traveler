@@ -15,6 +15,7 @@ import { MonsterHUD } from '../ui/MonsterHUD'
 import { PartyPanel } from '../ui/PartyPanel'
 import { ProductivityView } from '../ui/ProductivityView'
 import { QuestBoard } from '../ui/QuestBoard'
+import { RealityQuestPanel } from '../ui/RealityQuestPanel'
 import { ReactionPopup } from '../ui/ReactionPopup'
 import { RecruitModal } from '../ui/RecruitModal'
 import { SaveSlotsModal } from '../ui/SaveSlotsModal'
@@ -26,7 +27,7 @@ import { TodoPanel } from '../ui/TodoPanel'
 import { Toasts } from '../ui/Toasts'
 import { VictoryBanner } from '../ui/VictoryBanner'
 
-type RightView = 'home' | 'quest' | 'dungeon' | 'party' | 'gear' | 'shop'
+type RightView = 'home' | 'quest' | 'dungeon' | 'reality' | 'party' | 'gear' | 'shop'
 type Zone = 'adventure' | 'calendar'
 
 export function Dashboard() {
@@ -122,6 +123,7 @@ export function Dashboard() {
             <button className={view === 'home' ? 'on' : ''} onClick={() => setView('home')}>聊天</button>
             <button className={view === 'quest' ? 'on' : ''} onClick={() => setView('quest')}>副本</button>
             <button className={view === 'dungeon' ? 'on' : ''} onClick={() => setView('dungeon')}>副本库</button>
+            <button className={view === 'reality' ? 'on' : ''} onClick={() => setView('reality')}>现实任务</button>
             <button className={view === 'party' ? 'on' : ''} onClick={() => setView('party')}>队伍</button>
             <button className={view === 'gear' ? 'on' : ''} onClick={() => setView('gear')}>装备</button>
             <button className={view === 'shop' ? 'on' : ''} onClick={() => setView('shop')}>商店</button>
@@ -136,6 +138,7 @@ export function Dashboard() {
             )}
             {view === 'quest' && <QuestBoard />}
             {view === 'dungeon' && <DungeonPanel />}
+            {view === 'reality' && <RealityQuestPanel />}
             {view === 'party' && <PartyPanel />}
             {view === 'gear' && <EquipmentPanel />}
             {view === 'shop' && <ShopPanel />}

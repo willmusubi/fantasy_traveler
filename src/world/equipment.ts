@@ -10,6 +10,8 @@ export type EquipSlot = 'weapon' | 'armor' | 'trinket'
 export interface EquipmentDef {
   id: string
   nameKey: string
+  /** Story copy shown in the equipment panel. */
+  description?: string
   slot: EquipSlot
   worldId?: WorldId
   /** Flat additive stat bonuses. A weapon's +str IS its attack power (§25). */
@@ -25,6 +27,26 @@ export interface EquipmentDef {
   affixes?: EquipAffix[]
   /** Shop price in gold. Omitted = not purchasable (quest-only loot). */
   price?: number
+}
+
+/** System-owned rewards must exist even when a personal content pack replaces world equipment. */
+const SYSTEM_EQUIPMENT_DEFS: Record<string, EquipmentDef> = {
+  reality_hero_sword: {
+    id: 'reality_hero_sword', nameKey: 'equip.reality_hero_sword', slot: 'weapon',
+    bonus: { str: 10, spd: 3 }, weaponKind: 'sword', rarity: 'epic',
+    affixes: [{ kind: 'critBonus', pct: 8 }],
+  },
+  money_dart: {
+    id: 'money_dart', nameKey: 'equip.money_dart', slot: 'weapon',
+    description: '众筹来了第一把趁手的武器，上面印有一个“币”的字样。',
+    bonus: { str: 6, skl: 4 }, weaponKind: 'dart', rarity: 'rare',
+  },
+  lucky_coin: {
+    id: 'lucky_coin', nameKey: 'equip.lucky_coin', slot: 'trinket',
+    description: '其中一个金钱镖，突然发出金光，一声回响传入耳中“你币有了”。',
+    bonus: { skl: 8, spd: 6 }, rarity: 'legendary',
+    affixes: [{ kind: 'critBonus', pct: 10 }],
+  },
 }
 
 const DEFAULT_EQUIPMENT_DEFS: Record<string, EquipmentDef> = {
@@ -86,8 +108,11 @@ const DEFAULT_EQUIPMENT_DEFS: Record<string, EquipmentDef> = {
   },
 }
 
-/** The active equipment catalog — a local content pack (gitignored) overrides the shipped sample. */
-export const EQUIPMENT_DEFS: Record<string, EquipmentDef> = LOCAL_PACK?.equipment ?? DEFAULT_EQUIPMENT_DEFS
+/** A local pack replaces world equipment; system-owned rewards remain available. */
+export const EQUIPMENT_DEFS: Record<string, EquipmentDef> = {
+  ...SYSTEM_EQUIPMENT_DEFS,
+  ...(LOCAL_PACK?.equipment ?? DEFAULT_EQUIPMENT_DEFS),
+}
 
 /** Equipment available in a given world (world-scoped + world-agnostic items). */
 export function getWorldEquipment(worldId: WorldId): Record<string, EquipmentDef> {

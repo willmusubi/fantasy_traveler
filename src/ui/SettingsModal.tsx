@@ -85,7 +85,7 @@ export function SettingsModal({ onClose }: { onClose: () => void }) {
       const empty: BackupPayload = {
         app: 'fantasy-traveler', dbVersion: 4, exportedAt: new Date().toISOString(),
         characters: [], todos: [], journalEntries: [], calendarEvents: [], affinity: [],
-        chatThreads: [], chatMessages: [], quests: [], habits: [], dungeons: [], gameState: null, settings: null, meta: null,
+        chatThreads: [], chatMessages: [], quests: [], habits: [], dungeons: [], realityQuests: [], gameState: null, settings: null, meta: null,
       }
       await importAll(empty)
       window.location.reload()

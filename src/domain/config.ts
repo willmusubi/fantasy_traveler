@@ -189,11 +189,12 @@ export const TALENT_CRIT_BONUS = 5
 /** §28 duo techs: combined-stat coefficient share per partner. */
 export const DUO_POW_SHARE = 0.6
 /** Rarity display meta (color tokens live in CSS as .rarity-*). */
-export const RARITY_META: Record<'common' | 'uncommon' | 'rare' | 'epic', { label: string }> = {
+export const RARITY_META: Record<'common' | 'uncommon' | 'rare' | 'epic' | 'legendary', { label: string }> = {
   common: { label: '普通' },
   uncommon: { label: '精良' },
   rare: { label: '稀有' },
   epic: { label: '史诗' },
+  legendary: { label: '传奇' },
 }
 /** §28 habit milestones: streak thresholds → reward description (reducer implements). */
 export const HABIT_MILESTONES = [7, 30, 100] as const
@@ -275,7 +276,7 @@ export const AFFINITY_THRESHOLDS = {
  *  Convention: 匕首 (daggers) are authored as `sword` → 刺. */
 export const WEAPON_CATEGORY: Record<WeaponKind, PhysKind> = {
   katana: 'slash', axe: 'slash', halberd: 'slash',
-  sword: 'pierce', spear: 'pierce', bow: 'pierce',
+  sword: 'pierce', spear: 'pierce', bow: 'pierce', dart: 'pierce',
   fist: 'strike', hammer: 'strike', club: 'strike',
   rod: 'arcane', fan: 'arcane', qin: 'arcane',
 }
