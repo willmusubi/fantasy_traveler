@@ -234,6 +234,10 @@ input, select, textarea { font-family: inherit; }
 .todo-item.done .todo-title { text-decoration: line-through; }
 .todo-meta { font-size: 11px; color: var(--ink-dim); display: flex; gap: 9px; align-items: center; margin-top: 3px; }
 .overdue-tag { color: var(--prio-high); }
+/* §35 准时暴击: on-track dated task → reminder that finishing before the deadline boosts crit. */
+.ontime-tag { color: var(--gold); white-space: nowrap; }
+.todo-add-hint { margin: -6px 0 14px; font-size: 11px; color: var(--ink-dim); line-height: 1.5; }
+.todo-add-hint::first-letter { color: var(--gold); }
 .pips { display: inline-flex; gap: 3px; align-items: center; }
 .pip { width: 6px; height: 6px; border-radius: 1px; background: rgba(170, 178, 224, 0.25); box-shadow: 0 0 0 1px var(--outline); }
 .pip.on.high { background: var(--prio-high); }

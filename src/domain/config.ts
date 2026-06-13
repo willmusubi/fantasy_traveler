@@ -298,6 +298,11 @@ export const CRIT_BASE = 5
 export const CRIT_PER_SKL = 0.3
 export const CRIT_CAP = 45
 export const CRIT_MULT = 1.6
+/** §35 准时暴击: a task completed on or before its deadline grants this many EXTRA crit-rate
+ *  percentage points to the WHOLE round its completion drives. No deadline OR overdue → 0.
+ *  Stacks with talent/affix critBonus and is clamped by CRIT_CAP in critRate, so it rewards
+ *  BOTH setting a deadline and meeting it without ever guaranteeing a crit. */
+export const DEADLINE_CRIT_BONUS = 15
 /** Universal defense soak (was 1.0 for party hits / 0.5 for enemy hits — now uniform). */
 export const DEF_SOAK = 0.5
 /** Chip floor: damage never drops below this fraction of the pre-mitigation raw. */

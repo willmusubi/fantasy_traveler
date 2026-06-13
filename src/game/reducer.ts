@@ -14,6 +14,7 @@ import {
   AFFINITY_TODO_COMPLETE,
   BOSS_HEAVY_POOL_CAP,
   COUNTER_POWER_PCT,
+  DEADLINE_CRIT_BONUS,
   DUO_POW_SHARE,
   ENEMY_ATK_MULT,
   ENEMY_DEF_SOAK,
@@ -44,7 +45,7 @@ import {
   WIPE_MONSTER_HEAL_PCT,
   WIPE_REVIVE_HP_PCT,
 } from '../domain/config'
-import { localDateKey } from '../domain/dates'
+import { isOverdue, localDateKey } from '../domain/dates'
 import type { ActiveRound, Affinity, CharResource, Character, CombatStatus, Element, GameEffect, GameState, ID, Mood, MoodFlag, Monster, OwnedEquipment, PartyBuff, PhysKind, Priority, Quest, QuestReward, ScriptChapter, ScriptDef, SkillId, Stats, StatusEffectSpec, StatusKind, TurnActor, WeaponKind } from '../domain/types'
 import type { SynergyDef } from '../world/relationships'
 import { EQUIPMENT_DEFS } from '../world/equipment'
@@ -126,7 +127,8 @@ function skillCostOf(t: Turn, member: Character, skill: SkillDef): number {
   return discounted ? Math.ceil(skill.mpCost * (1 - MP_DISCOUNT_PCT)) : skill.mpCost
 }
 
-/** Extra crit % for this member: critBonus talent + critBonus equipment affixes. */
+/** Extra crit % for this member: critBonus talent + critBonus equipment affixes + the §35
+ *  round-wide 准时暴击 bonus (deadline met). All three stack; critRate clamps to CRIT_CAP. */
 function critBonusOf(t: Turn, member: Character): number {
   let pct = hasTalentPassive(member, t.gs.learnedTalents, 'critBonus') ? TALENT_CRIT_BONUS : 0
   for (const oe of t.input.ownedEquipment ?? []) {
@@ -135,7 +137,14 @@ function critBonusOf(t: Turn, member: Character): number {
       if (a.kind === 'critBonus') pct += a.pct
     }
   }
-  return pct
+  return pct + (t.roundCritBonus ?? 0)
+}
+
+/** §35 准时暴击: the round-wide crit bonus a completed task earns. A task with a deadline that is
+ *  NOT overdue at completion → DEADLINE_CRIT_BONUS; no deadline OR already overdue → 0. Pure (the
+ *  caller injects `now`), so the on-time judgement is fully testable. */
+function deadlineCritBonus(due: string | undefined, now: Date): number {
+  return due && !isOverdue(due, now) ? DEADLINE_CRIT_BONUS : 0
 }
 
 /** §28 onCritHeal affixes: heal the wielder after a landed CRIT. */
@@ -212,6 +221,9 @@ interface Turn {
   effects: GameEffect[]
   stats: Record<ID, Stats> // characterStats deltas (post-XP)
   aff: Record<ID, Affinity>
+  /** §35 准时暴击: round-wide crit-rate bonus for every player attack this turn (deadline met).
+   *  Set by the round entry points; folded into critBonusOf. Default (unset) = 0. */
+  roundCritBonus?: number
 }
 
 function newTurn(input: ReducerInput): Turn {
@@ -719,9 +731,9 @@ function noop(input: ReducerInput): ReducerResult {
 export function gameReducer(input: ReducerInput, event: DomainEvent): ReducerResult {
   switch (event.type) {
     case 'TodoCompleted':
-      return reduceTodoCompleted(input, event.todo.priority)
+      return reduceTodoCompleted(input, event.todo.priority, deadlineCritBonus(event.todo.due, input.now))
     case 'RoundBegan':
-      return reduceRoundBegan(input, event.todo.priority, event.todo.id)
+      return reduceRoundBegan(input, event.todo.priority, event.todo.id, deadlineCritBonus(event.todo.due, input.now))
     case 'RoundAdvanced':
       return reduceRoundAdvanced(input, event.choice, event.auto, event.targetId)
     case 'ScriptChoicePicked':
@@ -1366,10 +1378,12 @@ function finalizeRoundInto(t: Turn, ar: ActiveRound, victory: boolean, priorEffe
 
 /** Synchronous path (tests + non-stepping completion): resolve the WHOLE round at once using each
  *  member's gs.roundPlan. Behaviour-identical to the original inline loop. */
-function reduceTodoCompleted(input: ReducerInput, priority: Priority): ReducerResult {
+function reduceTodoCompleted(input: ReducerInput, priority: Priority, critBonus = 0): ReducerResult {
   const rctx = buildRoundCtx(input, priority)
   const ctx = roundCombatCtx(input, rctx)
   const t = newTurn(input)
+  t.roundCritBonus = critBonus // §35 准时暴击 — folded into every player attack via critBonusOf
+  if (critBonus > 0) t.effects.push({ type: 'deadlineBonus', pct: critBonus })
   const acted = new Set<ID>()
   let victory = false
   for (let i = 0; i < rctx.order.length && !victory; i++) {
@@ -1382,10 +1396,12 @@ function reduceTodoCompleted(input: ReducerInput, priority: Priority): ReducerRe
 
 /** Interactive path — BEGIN: set up activeRound, auto-run any leading enemy turns, and pause at the
  *  first live ally decision (or finalize immediately if there is none — e.g. no living allies). */
-function reduceRoundBegan(input: ReducerInput, priority: Priority, todoId: ID): ReducerResult {
+function reduceRoundBegan(input: ReducerInput, priority: Priority, todoId: ID, critBonus = 0): ReducerResult {
   const rctx = buildRoundCtx(input, priority)
   const ctx = roundCombatCtx(input, rctx)
   const t = newTurn(input)
+  t.roundCritBonus = critBonus // §35 准时暴击 — frozen onto the ActiveRound below so resume keeps it
+  if (critBonus > 0) t.effects.push({ type: 'deadlineBonus', pct: critBonus }) // banner the round-opening bonus
   const acted = new Set<ID>()
   let index = 0
   let victory = false
@@ -1406,6 +1422,7 @@ function reduceRoundBegan(input: ReducerInput, priority: Priority, todoId: ID): 
     goldAtStart: input.gameState.gold,
     enemiesAtStart: input.gameState.enemies,
     todoId,
+    critBonusPct: critBonus, // §35 — every RoundAdvanced step re-reads this off the ActiveRound
   }
   t.gs.activeRound = ar
   if (index >= rctx.order.length || victory) return finalizeRoundInto(t, ar, victory, [])
@@ -1418,6 +1435,7 @@ function reduceRoundAdvanced(input: ReducerInput, choice?: SkillId | 'basic', au
   const t = newTurn(input)
   const ar = t.gs.activeRound
   if (!ar) return noop(input)
+  t.roundCritBonus = ar.critBonusPct ?? 0 // §35 — same 准时暴击 bonus as the round's BEGIN dispatch
   const rctx: RoundCtx = {
     priority: ar.priority, mult: ar.mult, order: ar.order, charges: ar.charges,
     buffsAtStart: ar.buffsAtStart,

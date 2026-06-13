@@ -50,6 +50,18 @@ describe('combat log', () => {
     expect(texts()).toContain('米拉')
   })
 
+  it('§35 banners 赶在截止前完成 for an on-time dated todo, and never for a due-less one', async () => {
+    await useGame.getState().seedNewGame('阿旅')
+    // A due-less completion is an ordinary round — no on-time banner (back-compat guard).
+    await useTodos.getState().add({ title: '随手记', priority: 'high' })
+    await useTodos.getState().complete(useTodos.getState().todos.find((x) => x.status === 'open')!.id)
+    expect(texts()).not.toContain('截止前完成')
+    // A dated todo finished before its (far-future, never-overdue) deadline → the banner renders.
+    await useTodos.getState().add({ title: '按时交', priority: 'high', due: '2099-01-01' })
+    await useTodos.getState().complete(useTodos.getState().todos.find((x) => x.status === 'open')!.id)
+    expect(texts()).toContain('截止前完成')
+  })
+
   it('keeps the log bounded across many rounds', async () => {
     await useGame.getState().seedNewGame('阿旅')
     for (let i = 0; i < 6; i++) {

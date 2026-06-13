@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
+import { DEADLINE_CRIT_BONUS } from '../domain/config'
 import { isOverdue } from '../domain/dates'
 import type { Priority, Todo } from '../domain/types'
 import { partitionTodayTodos, useTodos } from '../state/todoStore'
@@ -216,6 +217,11 @@ function TodoRow({
           <Pips priority={todo.priority} />
           {todo.due && <span>📅 {todo.due}</span>}
           {overdue && <span className="overdue-tag">⚠ 已逾期</span>}
+          {!done && todo.due && !overdue && (
+            <span className="ontime-tag" title={`在截止日期前完成，这一回合全队暴击率最高 +${DEADLINE_CRIT_BONUS}%`}>
+              ⚡ 准时暴击
+            </span>
+          )}
           {!done && <TodoTimer todo={todo} />}
         </div>
       </div>
@@ -383,6 +389,7 @@ export function TodoPanel() {
           添加
         </button>
       </form>
+      <p className="todo-add-hint">⚡ 设个截止日期并赶在它之前完成，这一回合全队暴击率最高 +{DEADLINE_CRIT_BONUS}%。</p>
 
       <div className="todo-list">
         {todos.length === 0 && (

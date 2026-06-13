@@ -655,6 +655,8 @@ export type GameEffect =
   /** A member took the 防御 stance (1-round guard status; halves incoming hits). */
   | { type: 'guarded'; characterId: ID }
   | { type: 'bossPhase'; enemyId: ID; phaseLabel?: string; narration?: string }
+  /** §35 准时暴击: this round's task was finished on time → +pct crit-rate for the whole round. */
+  | { type: 'deadlineBonus'; pct: number }
 
 /** An in-progress interactive (FF-style step-through) round. Present only while the player is
  *  resolving turns; cleared at finalize. Persisted in GameState so a refresh mid-round resumes. */
@@ -683,6 +685,9 @@ export interface ActiveRound {
   enemiesAtStart: Monster[]
   /** The todo whose completion owns this round. */
   todoId: ID
+  /** §35 准时暴击: round-wide extra crit % earned by completing the owning task before its
+   *  deadline. Frozen at round start so the step-through reuses it. Missing → 0 (save-compat). */
+  critBonusPct?: number
 }
 
 export interface GameState {

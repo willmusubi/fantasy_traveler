@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  CHIP_FLOOR_PCT, CRIT_CAP, CRIT_MULT, DMG_VARIANCE, HIT_FLOOR,
+  CHIP_FLOOR_PCT, CRIT_CAP, CRIT_MULT, DEADLINE_CRIT_BONUS, DMG_VARIANCE, HIT_FLOOR,
 } from '../domain/config'
 import { critRate, elementMult, hitRate, physMult, rollDamage, typeMultiplier } from './damage'
 
@@ -73,6 +73,16 @@ describe('rollDamage', () => {
   it('enemy-side attacks NEVER crit (no skl provided)', () => {
     const r = rollDamage({ ...base, roll: seq(0, 0, MID) })
     expect(r.crit).toBe(false)
+  })
+
+  it('§35 准时暴击: critBonusPct lifts the crit rate so a borderline roll lands', () => {
+    // skl 0 → base critRate 5%. A crit roll of 0.10 (10%) sits ABOVE the base window but the
+    // on-time bonus (+15 → 20%) pulls it in. Same roll, crit flips on the bonus alone.
+    const rolls = () => seq(0, 0.1, MID)
+    expect(rollDamage({ ...base, attackerSkl: 0, roll: rolls() }).crit).toBe(false)
+    const onTime = rollDamage({ ...base, attackerSkl: 0, critBonusPct: DEADLINE_CRIT_BONUS, roll: rolls() })
+    expect(onTime.crit).toBe(true)
+    expect(onTime.dmg).toBe(Math.round(25 * CRIT_MULT)) // 40 — ×1.6 outside the type clamp
   })
 
   it('chip floor: heavy defense yields ceil(10% of raw hit), not 1', () => {

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { freshAffinity } from '../companion/affinity'
-import { AFFINITY_JOURNAL_TOTAL, JOURNAL_XP, TODO_XP, VICTORY_AFFINITY } from '../domain/config'
+import { AFFINITY_JOURNAL_TOTAL, DEADLINE_CRIT_BONUS, JOURNAL_XP, TODO_XP, VICTORY_AFFINITY } from '../domain/config'
 import type { Affinity, Character, GameState, JournalEntry, Monster, Mood, Quest, Todo } from '../domain/types'
 import { defeatRewards } from './combat'
 import { statsForClassAtLevel } from './leveling'
@@ -336,5 +336,99 @@ describe('gameReducer · habit buffs (untilVictory)', () => {
     expect(r.effects.find((e) => e.type === 'victory')).toBeUndefined()
     expect(r.gameState.partyBuffs.find((b) => b.id === 'run')).toBeTruthy() // untilVictory untouched
     expect(r.gameState.partyBuffs.find((b) => b.id === 'skill')).toBeUndefined() // turnsLeft 1 → 0 → removed
+  })
+})
+
+// §35 准时暴击: finishing a task on or before its deadline grants a round-wide crit bonus.
+// NOW = 2026-05-29 12:00 local → due '2026-05-29' (end-of-day) and any later date are ON TIME;
+// '2026-05-28' is overdue. A todo with no `due` is never eligible.
+describe('gameReducer · §35 准时暴击 (deadline crit bonus)', () => {
+  const datedTodo = (due: string | undefined, priority: Todo['priority'] = 'med'): Todo => ({
+    id: 't1', title: 't', priority, status: 'done', tags: [], createdAt: TODAY, due,
+  })
+
+  it('banners the round-wide bonus when a task is finished on or before its deadline', () => {
+    const r = gameReducer(makeInput(), { type: 'TodoCompleted', todo: datedTodo('2026-05-29') })
+    expect(r.effects.find((e) => e.type === 'deadlineBonus')).toMatchObject({ pct: DEADLINE_CRIT_BONUS })
+  })
+
+  it('also banners for a FUTURE deadline (any date not yet passed is on time)', () => {
+    const r = gameReducer(makeInput(), { type: 'TodoCompleted', todo: datedTodo('2026-05-30') })
+    expect(r.effects.find((e) => e.type === 'deadlineBonus')).toMatchObject({ pct: DEADLINE_CRIT_BONUS })
+  })
+
+  it('grants NO bonus for an overdue task (the 心魔 already fed on the delay)', () => {
+    const r = gameReducer(makeInput(), { type: 'TodoCompleted', todo: datedTodo('2026-05-28') })
+    expect(r.effects.some((e) => e.type === 'deadlineBonus')).toBe(false)
+  })
+
+  it('grants NO bonus for a task with no deadline (you must set one to claim it)', () => {
+    const r = gameReducer(makeInput(), { type: 'TodoCompleted', todo: datedTodo(undefined) })
+    expect(r.effects.some((e) => e.type === 'deadlineBonus')).toBe(false)
+  })
+
+  it('actually lifts the crit rate of the round it drives', () => {
+    // One player, skl 0 → base critRate 5%. A constant 0.10 roll lands the hit, sits at 10% on the
+    // crit roll, and mid-variance — so the basic attack crits ONLY once the +15 on-time bonus folds in.
+    const player: Character = { ...PLAYER, stats: { ...statsForClassAtLevel('vanguard', 1), skl: 0 } }
+    const base = makeInput()
+    const input = makeInput({
+      party: [player],
+      gameState: { ...base.gameState, partyIds: ['player'], unlockedCompanionIds: [], enemies: [makeMonster({ maxHp: 9999, hp: 9999 })] },
+      roll: () => 0.1,
+    })
+    const playerCrit = (due: string) =>
+      gameReducer(input, { type: 'TodoCompleted', todo: datedTodo(due) })
+        .effects.some((e) => e.type === 'damage' && e.actorId === 'player' && e.crit === true)
+    expect(playerCrit('2026-05-30')).toBe(true) // on time → the round can crit
+    expect(playerCrit('2026-05-28')).toBe(false) // overdue → same roll, no crit
+  })
+
+  it('lifts the crit rate of a planned attack SKILL too (shared critBonusOf, not basics-only)', () => {
+    // 米拉 lvl-6 with 流光击 planned, skl 0 → base critRate 5%. Same 0.10 roll: the skill cast
+    // crits ONLY once the +15 on-time bonus folds in — proving skills share the round bonus.
+    const caster: Character = {
+      id: 'mira', name: 'mira', kind: 'companion', classId: 'striker',
+      stats: { ...statsForClassAtLevel('striker', 6), skl: 0 },
+      skills: ['liuguang'], portraitSet: 'x', createdAt: TODAY,
+    }
+    const base = makeInput()
+    const input = makeInput({
+      party: [PLAYER, caster],
+      gameState: { ...base.gameState, roundPlan: { mira: 'liuguang' }, enemies: [makeMonster({ maxHp: 9999, hp: 9999 })] },
+      roll: () => 0.1,
+    })
+    const skillCrit = (due: string) => {
+      const cast = gameReducer(input, { type: 'TodoCompleted', todo: datedTodo(due) })
+        .effects.find((e) => e.type === 'skillCast' && e.skillId === 'liuguang')
+      return cast?.type === 'skillCast' && cast.crit === true
+    }
+    expect(skillCrit('2026-05-30')).toBe(true) // on time → the skill can crit
+    expect(skillCrit('2026-05-28')).toBe(false) // overdue → same roll, no crit
+  })
+
+  it('freezes the bonus onto the ActiveRound so the step-through reuses it', () => {
+    const r = gameReducer(makeInput(), { type: 'RoundBegan', todo: datedTodo('2026-05-29') })
+    expect(r.gameState.activeRound?.critBonusPct).toBe(DEADLINE_CRIT_BONUS)
+  })
+
+  it('the step-through RESUME applies the bonus to a real attack, not just stores the value', () => {
+    // RoundBegan pauses at the (plan-less) player's first turn; RoundAdvanced resolves the basic
+    // attack on the resumed dispatch — which must re-read ar.critBonusPct, or the crit never lands.
+    const player: Character = { ...PLAYER, stats: { ...statsForClassAtLevel('vanguard', 1), skl: 0 } }
+    const base = makeInput()
+    const resumeCrit = (due: string) => {
+      const input = makeInput({
+        party: [player],
+        gameState: { ...base.gameState, partyIds: ['player'], unlockedCompanionIds: [], roundPlan: {}, enemies: [makeMonster({ maxHp: 9999, hp: 9999, atk: 1 })] },
+        roll: () => 0.1,
+      })
+      const r0 = gameReducer(input, { type: 'RoundBegan', todo: datedTodo(due) })
+      expect(r0.gameState.activeRound).toBeTruthy() // paused at the player's decision (not finalized)
+      const r1 = gameReducer({ ...input, gameState: r0.gameState, affinities: r0.affinities }, { type: 'RoundAdvanced', choice: 'basic' })
+      return r1.effects.some((e) => e.type === 'damage' && e.actorId === 'player' && e.crit === true)
+    }
+    expect(resumeCrit('2026-05-30')).toBe(true) // resume re-reads the frozen bonus → crit
+    expect(resumeCrit('2026-05-28')).toBe(false) // overdue → no bonus on resume
   })
 })

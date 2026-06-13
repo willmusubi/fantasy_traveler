@@ -74,6 +74,10 @@ export function buildLogEntry(effects: GameEffect[], ctx: LogContext): CombatLog
       case 'monsterGrew':
         lines.push({ icon: '⚠', text: `拖延让 ${primaryName} 更强了（HP +${e.hpDelta}，攻击 +${e.atkDelta}）`, tone: 'bad' })
         break
+      case 'deadlineBonus':
+        // "最高" — the bonus folds into crit rate under the 45% cap, so a crit-capped member sees less.
+        lines.push({ icon: '⚡', text: `赶在截止前完成！本回合全队暴击率最高 +${e.pct}%`, tone: 'good' })
+        break
       case 'downed':
         lines.push({ icon: '✖', text: `${nameOf(e.characterId)} 倒下了！`, tone: 'bad' })
         break
